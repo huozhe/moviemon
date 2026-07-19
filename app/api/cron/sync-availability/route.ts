@@ -11,6 +11,8 @@ export async function GET(req: Request) {
   }
 
   const result = await syncAvailability();
-  const status = result.status === "ok" ? 200 : 500;
+  // partial (e.g. stopped on 429 after progress) is still a successful job run
+  const status =
+    result.status === "ok" || result.status === "partial" ? 200 : 500;
   return Response.json(result, { status });
 }

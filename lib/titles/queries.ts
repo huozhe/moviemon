@@ -1,4 +1,13 @@
-import { and, asc, desc, eq, inArray, notInArray } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  notInArray,
+} from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import {
   offers,
@@ -18,6 +27,8 @@ export type TitleRow = {
   lastSeenAt: Date;
   providerIds: string[];
   webUrls: Record<string, string | null>;
+  /** null = availability not checked yet */
+  availabilityCheckedAt?: Date | null;
 };
 
 /**
@@ -34,6 +45,7 @@ export async function listAvailableTitles(): Promise<TitleRow[]> {
       titleType: titles.titleType,
       posterUrl: titles.posterUrl,
       lastSeenAt: watchlistItems.lastSeenAt,
+      availabilityCheckedAt: watchlistItems.availabilityCheckedAt,
       providerId: offers.providerId,
       webUrl: offers.webUrl,
     })
@@ -54,7 +66,8 @@ export async function listAvailableTitles(): Promise<TitleRow[]> {
 }
 
 /**
- * On-list titles with no qualifying offers.
+ * On-list titles that were checked and have no qualifying offers.
+ * Pending (never checked) titles are excluded — use listPendingTitles.
  */
 export async function listUnavailableTitles(): Promise<TitleRow[]> {
   const db = getDb();
@@ -80,23 +93,52 @@ export async function listUnavailableTitles(): Promise<TitleRow[]> {
       titleType: titles.titleType,
       posterUrl: titles.posterUrl,
       lastSeenAt: watchlistItems.lastSeenAt,
+      availabilityCheckedAt: watchlistItems.availabilityCheckedAt,
     })
     .from(watchlistItems)
     .innerJoin(titles, eq(titles.imdbId, watchlistItems.imdbId));
 
+  const checked = and(
+    eq(watchlistItems.onList, true),
+    isNotNull(watchlistItems.availabilityCheckedAt),
+  );
+
   const rows =
     availableIds.length === 0
-      ? await base
-          .where(eq(watchlistItems.onList, true))
-          .orderBy(asc(titles.name))
+      ? await base.where(checked).orderBy(asc(titles.name))
       : await base
-          .where(
-            and(
-              eq(watchlistItems.onList, true),
-              notInArray(titles.imdbId, availableIds),
-            ),
-          )
+          .where(and(checked, notInArray(titles.imdbId, availableIds)))
           .orderBy(asc(titles.name));
+
+  return rows.map((r) => ({
+    ...r,
+    providerIds: [],
+    webUrls: {},
+  }));
+}
+
+/** On-list titles not yet checked with Watchmode. */
+export async function listPendingTitles(): Promise<TitleRow[]> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      imdbId: titles.imdbId,
+      name: titles.name,
+      year: titles.year,
+      titleType: titles.titleType,
+      posterUrl: titles.posterUrl,
+      lastSeenAt: watchlistItems.lastSeenAt,
+      availabilityCheckedAt: watchlistItems.availabilityCheckedAt,
+    })
+    .from(watchlistItems)
+    .innerJoin(titles, eq(titles.imdbId, watchlistItems.imdbId))
+    .where(
+      and(
+        eq(watchlistItems.onList, true),
+        isNull(watchlistItems.availabilityCheckedAt),
+      ),
+    )
+    .orderBy(asc(titles.name));
 
   return rows.map((r) => ({
     ...r,
@@ -127,6 +169,7 @@ function groupTitleRows(
     titleType: string | null;
     posterUrl: string | null;
     lastSeenAt: Date;
+    availabilityCheckedAt?: Date | null;
     providerId: string;
     webUrl: string | null;
   }>,
@@ -142,6 +185,7 @@ function groupTitleRows(
         titleType: r.titleType,
         posterUrl: r.posterUrl,
         lastSeenAt: r.lastSeenAt,
+        availabilityCheckedAt: r.availabilityCheckedAt,
         providerIds: [],
         webUrls: {},
       };

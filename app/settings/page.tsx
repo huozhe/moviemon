@@ -1,21 +1,30 @@
 import { SiteNav } from "@/components/SiteNav";
-import { listProviders, listRecentSyncRuns } from "@/lib/titles/queries";
+import {
+  listPendingTitles,
+  listProviders,
+  listRecentSyncRuns,
+} from "@/lib/titles/queries";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   let providers: Awaited<ReturnType<typeof listProviders>> = [];
   let syncRuns: Awaited<ReturnType<typeof listRecentSyncRuns>> = [];
+  let pendingCount = 0;
   let error: string | null = null;
 
   if (!process.env.DATABASE_URL) {
     error = "DATABASE_URL is not set.";
   } else {
     try {
-      [providers, syncRuns] = await Promise.all([
+      const [p, runs, pending] = await Promise.all([
         listProviders(),
         listRecentSyncRuns(8),
+        listPendingTitles(),
       ]);
+      providers = p;
+      syncRuns = runs;
+      pendingCount = pending.length;
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     }
@@ -35,6 +44,15 @@ export default async function SettingsPage() {
         {error ? (
           <p className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             {error}
+          </p>
+        ) : null}
+
+        {pendingCount > 0 ? (
+          <p className="mb-6 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+            Availability catch-up:{" "}
+            <strong>{pendingCount}</strong> title
+            {pendingCount === 1 ? "" : "s"} not yet checked (batch of 12 per
+            sync; never-checked first).
           </p>
         ) : null}
 

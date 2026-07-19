@@ -6,40 +6,53 @@ export type Offer = {
   webUrl?: string;
 };
 
+export type GetUSOffersResult = {
+  offers: Offer[];
+  /** null when Watchmode has no title for this IMDb id */
+  watchmodeId: number | null;
+};
+
+export class WatchmodeHttpError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "WatchmodeHttpError";
+    this.status = status;
+  }
+}
+
+export function isRateLimited(err: unknown): boolean {
+  return err instanceof WatchmodeHttpError && err.status === 429;
+}
+
 const REGION = "US";
 
 /**
  * Resolve US streaming offers for an IMDb title via Watchmode.
- * Map Watchmode source ids → app provider ids once external_id is seeded.
+ * Pass cachedWatchmodeId to skip the search call (halves API usage).
  */
-export async function getUSOffers(imdbId: string): Promise<Offer[]> {
+export async function getUSOffers(
+  imdbId: string,
+  cachedWatchmodeId?: number | null,
+): Promise<GetUSOffersResult> {
   const apiKey = process.env.WATCHMODE_API_KEY;
   if (!apiKey) {
     throw new Error("WATCHMODE_API_KEY is not set");
   }
 
-  // 1) Look up Watchmode title id by IMDb id
-  const searchUrl = new URL("https://api.watchmode.com/v1/search/");
-  searchUrl.searchParams.set("apiKey", apiKey);
-  searchUrl.searchParams.set("search_field", "imdb_id");
-  searchUrl.searchParams.set("search_value", imdbId);
+  let titleId =
+    typeof cachedWatchmodeId === "number" && cachedWatchmodeId > 0
+      ? cachedWatchmodeId
+      : null;
 
-  const searchRes = await fetch(searchUrl.toString(), { cache: "no-store" });
-  if (!searchRes.ok) {
-    throw new Error(
-      `Watchmode search failed for ${imdbId}: HTTP ${searchRes.status}`,
-    );
+  if (titleId == null) {
+    titleId = await searchWatchmodeId(apiKey, imdbId);
+    if (titleId == null) {
+      return { offers: [], watchmodeId: null };
+    }
   }
 
-  const searchJson = (await searchRes.json()) as {
-    title_results?: Array<{ id: number }>;
-  };
-  const titleId = searchJson.title_results?.[0]?.id;
-  if (!titleId) {
-    return [];
-  }
-
-  // 2) Sources for that title (US)
   const sourcesUrl = new URL(
     `https://api.watchmode.com/v1/title/${titleId}/sources/`,
   );
@@ -48,8 +61,10 @@ export async function getUSOffers(imdbId: string): Promise<Offer[]> {
 
   const sourcesRes = await fetch(sourcesUrl.toString(), { cache: "no-store" });
   if (!sourcesRes.ok) {
-    throw new Error(
-      `Watchmode sources failed for ${imdbId}: HTTP ${sourcesRes.status}`,
+    // Cached id may be stale — clear caller can drop cache on 404
+    throw new WatchmodeHttpError(
+      sourcesRes.status,
+      `Watchmode sources failed for ${imdbId} (wm=${titleId}): HTTP ${sourcesRes.status}`,
     );
   }
 
@@ -61,7 +76,33 @@ export async function getUSOffers(imdbId: string): Promise<Offer[]> {
     region?: string;
   }>;
 
-  return mapWatchmodeSources(sources);
+  return {
+    offers: mapWatchmodeSources(sources),
+    watchmodeId: titleId,
+  };
+}
+
+async function searchWatchmodeId(
+  apiKey: string,
+  imdbId: string,
+): Promise<number | null> {
+  const searchUrl = new URL("https://api.watchmode.com/v1/search/");
+  searchUrl.searchParams.set("apiKey", apiKey);
+  searchUrl.searchParams.set("search_field", "imdb_id");
+  searchUrl.searchParams.set("search_value", imdbId);
+
+  const searchRes = await fetch(searchUrl.toString(), { cache: "no-store" });
+  if (!searchRes.ok) {
+    throw new WatchmodeHttpError(
+      searchRes.status,
+      `Watchmode search failed for ${imdbId}: HTTP ${searchRes.status}`,
+    );
+  }
+
+  const searchJson = (await searchRes.json()) as {
+    title_results?: Array<{ id: number }>;
+  };
+  return searchJson.title_results?.[0]?.id ?? null;
 }
 
 /** Map raw Watchmode sources to our four providers. */
@@ -110,9 +151,7 @@ function matchProvider(name: string): ProviderId | null {
   return null;
 }
 
-function mapMonotype(
-  type: string,
-): Offer["monotype"] | null {
+function mapMonotype(type: string): Offer["monotype"] | null {
   const t = type.toLowerCase();
   if (t === "sub" || t === "subscription" || t === "flatrate") return "flatrate";
   if (t === "free") return "free";

@@ -15,6 +15,8 @@ export const titles = pgTable("titles", {
   year: integer("year"),
   titleType: text("title_type"), // movie | tv | other
   posterUrl: text("poster_url"),
+  /** Cached Watchmode title id — skips /search on later availability passes */
+  watchmodeId: integer("watchmode_id"),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -26,6 +28,10 @@ export const watchlistItems = pgTable("watchlist_items", {
     .references(() => titles.imdbId),
   onList: boolean("on_list").notNull().default(true),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull(),
+  /** Set after a successful Watchmode sources lookup (even if zero offers). */
+  availabilityCheckedAt: timestamp("availability_checked_at", {
+    withTimezone: true,
+  }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
