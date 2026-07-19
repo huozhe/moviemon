@@ -35,6 +35,23 @@ function formatRuntime(
   return `${h}h ${m}m`;
 }
 
+/** TV: "4 seasons · 15 eps" (or whichever side we have). */
+function formatSeriesCounts(
+  seasons: number | null | undefined,
+  episodes: number | null | undefined,
+  titleType: string | null | undefined,
+) {
+  if (!isTvType(titleType)) return null;
+  const parts: string[] = [];
+  if (seasons != null && seasons > 0) {
+    parts.push(`${seasons} season${seasons === 1 ? "" : "s"}`);
+  }
+  if (episodes != null && episodes > 0) {
+    parts.push(`${episodes} ep${episodes === 1 ? "" : "s"}`);
+  }
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
 export function TitleCard({
   imdbId,
   name,
@@ -43,6 +60,8 @@ export function TitleCard({
   posterUrl,
   imdbRating,
   runtimeMinutes,
+  seasonCount,
+  episodeCount,
   plot,
   providerIds,
   webUrls,
@@ -55,6 +74,8 @@ export function TitleCard({
   posterUrl?: string | null;
   imdbRating?: number | null;
   runtimeMinutes?: number | null;
+  seasonCount?: number | null;
+  episodeCount?: number | null;
   plot?: string | null;
   providerIds: string[];
   webUrls?: Record<string, string | null>;
@@ -66,6 +87,11 @@ export function TitleCard({
       : null;
   const ratingText = formatRating(imdbRating ?? null);
   const runtimeText = formatRuntime(runtimeMinutes ?? null, titleType);
+  const seriesText = formatSeriesCounts(
+    seasonCount ?? null,
+    episodeCount ?? null,
+    titleType,
+  );
 
   return (
     <article className="group rounded-2xl bg-raised/80 p-3 ring-1 ring-border transition hover:bg-raised hover:ring-border-strong sm:p-4">
@@ -111,6 +137,14 @@ export function TitleCard({
                   }
                 >
                   {runtimeText}
+                </span>
+              ) : null}
+              {seriesText ? (
+                <span
+                  className="font-mono text-[11px] tabular-nums text-faint"
+                  title="Seasons and episodes (IMDb)"
+                >
+                  {seriesText}
                 </span>
               ) : null}
               {ratingText ? (

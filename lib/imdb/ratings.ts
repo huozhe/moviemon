@@ -15,6 +15,8 @@ export type ImdbTitleMeta = {
   posterUrl: string | null;
   runtimeMinutes: number | null;
   plot: string | null;
+  seasonCount: number | null;
+  episodeCount: number | null;
 };
 
 const GQL_URL = "https://graphql.imdb.com/";
@@ -64,7 +66,7 @@ export async function fetchImdbRating(
 }
 
 /**
- * Rating + poster + runtime + plot in one request.
+ * Rating + poster + runtime + plot + series counts in one request.
  * Poster URLs point at Amazon CDN; we store the URL only.
  */
 export async function fetchImdbTitleMeta(
@@ -87,6 +89,12 @@ export async function fetchImdbTitleMeta(
           plainText?: string | null;
         } | null;
       } | null;
+      episodes?: {
+        seasons?: Array<{ number?: number | null }> | null;
+        episodes?: {
+          total?: number | null;
+        } | null;
+      } | null;
     } | null;
   }>(
     `query TitleMeta($id: ID!) {
@@ -104,6 +112,14 @@ export async function fetchImdbTitleMeta(
         plot {
           plotText {
             plainText
+          }
+        }
+        episodes {
+          seasons {
+            number
+          }
+          episodes(first: 1) {
+            total
           }
         }
       }
@@ -137,5 +153,20 @@ export async function fetchImdbTitleMeta(
   const plotRaw = data.title?.plot?.plotText?.plainText?.trim() || null;
   const plot = plotRaw && plotRaw.length > 0 ? plotRaw : null;
 
-  return { rating, votes, posterUrl, runtimeMinutes, plot };
+  const seasons = data.title?.episodes?.seasons;
+  const seasonCount =
+    Array.isArray(seasons) && seasons.length > 0 ? seasons.length : null;
+  const epTotal = data.title?.episodes?.episodes?.total;
+  const episodeCount =
+    typeof epTotal === "number" && epTotal > 0 ? epTotal : null;
+
+  return {
+    rating,
+    votes,
+    posterUrl,
+    runtimeMinutes,
+    plot,
+    seasonCount,
+    episodeCount,
+  };
 }

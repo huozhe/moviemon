@@ -1,4 +1,4 @@
-import { and, eq, isNull, notInArray, or } from "drizzle-orm";
+import { and, eq, isNull, notInArray, or, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { titles, watchlistItems, syncRuns } from "@/lib/db/schema";
 import {
@@ -132,15 +132,18 @@ export async function syncWatchlist(
     )
     .returning({ imdbId: watchlistItems.imdbId });
 
-  // GraphQL gap-fill: missing rating, poster, runtime, and/or plot
+  // GraphQL gap-fill: missing rating, poster, runtime, plot, and/or series counts
   let metaFromGraphql = 0;
   const missing = await db
     .select({
       imdbId: titles.imdbId,
+      titleType: titles.titleType,
       imdbRating: titles.imdbRating,
       posterUrl: titles.posterUrl,
       runtimeMinutes: titles.runtimeMinutes,
       plot: titles.plot,
+      seasonCount: titles.seasonCount,
+      episodeCount: titles.episodeCount,
     })
     .from(titles)
     .innerJoin(watchlistItems, eq(watchlistItems.imdbId, titles.imdbId))
@@ -152,6 +155,15 @@ export async function syncWatchlist(
           isNull(titles.posterUrl),
           isNull(titles.runtimeMinutes),
           isNull(titles.plot),
+          // Season/episode only matter for TV — don't re-poll movies forever
+          and(
+            or(
+              eq(titles.titleType, "tv"),
+              sql`lower(coalesce(${titles.titleType}, '')) like '%tv%'`,
+              sql`lower(coalesce(${titles.titleType}, '')) like '%series%'`,
+            ),
+            or(isNull(titles.seasonCount), isNull(titles.episodeCount)),
+          ),
         ),
       ),
     )
@@ -169,6 +181,8 @@ export async function syncWatchlist(
         posterUrl?: string;
         runtimeMinutes?: number;
         plot?: string;
+        seasonCount?: number;
+        episodeCount?: number;
         updatedAt: Date;
       } = { updatedAt: new Date() };
 
@@ -185,6 +199,12 @@ export async function syncWatchlist(
       }
       if (!row.plot && meta.plot) {
         patch.plot = meta.plot;
+      }
+      if (row.seasonCount == null && meta.seasonCount != null) {
+        patch.seasonCount = meta.seasonCount;
+      }
+      if (row.episodeCount == null && meta.episodeCount != null) {
+        patch.episodeCount = meta.episodeCount;
       }
 
       if (Object.keys(patch).length > 1) {

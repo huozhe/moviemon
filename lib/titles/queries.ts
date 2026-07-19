@@ -27,6 +27,8 @@ export type TitleRow = {
   imdbRating: number | null;
   imdbVotes: number | null;
   runtimeMinutes: number | null;
+  seasonCount: number | null;
+  episodeCount: number | null;
   plot: string | null;
   lastSeenAt: Date;
   providerIds: string[];
@@ -44,6 +46,8 @@ export type BrowserTitle = {
   imdbRating: number | null;
   imdbVotes: number | null;
   runtimeMinutes: number | null;
+  seasonCount: number | null;
+  episodeCount: number | null;
   plot: string | null;
   lastSeenAt: string | null;
   providerIds: string[];
@@ -66,6 +70,8 @@ export async function listAvailableTitles(): Promise<TitleRow[]> {
       imdbRating: titles.imdbRating,
       imdbVotes: titles.imdbVotes,
       runtimeMinutes: titles.runtimeMinutes,
+      seasonCount: titles.seasonCount,
+      episodeCount: titles.episodeCount,
       plot: titles.plot,
       lastSeenAt: watchlistItems.lastSeenAt,
       availabilityCheckedAt: watchlistItems.availabilityCheckedAt,
@@ -117,6 +123,8 @@ export async function listUnavailableTitles(): Promise<TitleRow[]> {
       imdbRating: titles.imdbRating,
       imdbVotes: titles.imdbVotes,
       runtimeMinutes: titles.runtimeMinutes,
+      seasonCount: titles.seasonCount,
+      episodeCount: titles.episodeCount,
       plot: titles.plot,
       lastSeenAt: watchlistItems.lastSeenAt,
       availabilityCheckedAt: watchlistItems.availabilityCheckedAt,
@@ -156,6 +164,8 @@ export async function listPendingTitles(): Promise<TitleRow[]> {
       imdbRating: titles.imdbRating,
       imdbVotes: titles.imdbVotes,
       runtimeMinutes: titles.runtimeMinutes,
+      seasonCount: titles.seasonCount,
+      episodeCount: titles.episodeCount,
       plot: titles.plot,
       lastSeenAt: watchlistItems.lastSeenAt,
       availabilityCheckedAt: watchlistItems.availabilityCheckedAt,
@@ -241,6 +251,8 @@ export function toBrowserTitles(rows: TitleRow[]): BrowserTitle[] {
     imdbRating: t.imdbRating,
     imdbVotes: t.imdbVotes,
     runtimeMinutes: t.runtimeMinutes,
+    seasonCount: t.seasonCount,
+    episodeCount: t.episodeCount,
     plot: t.plot,
     lastSeenAt:
       t.lastSeenAt instanceof Date
@@ -263,6 +275,8 @@ function groupTitleRows(
     imdbRating: number | null;
     imdbVotes: number | null;
     runtimeMinutes: number | null;
+    seasonCount: number | null;
+    episodeCount: number | null;
     plot: string | null;
     lastSeenAt: Date;
     availabilityCheckedAt?: Date | null;
@@ -283,6 +297,8 @@ function groupTitleRows(
         imdbRating: r.imdbRating,
         imdbVotes: r.imdbVotes,
         runtimeMinutes: r.runtimeMinutes,
+        seasonCount: r.seasonCount,
+        episodeCount: r.episodeCount,
         plot: r.plot,
         lastSeenAt: r.lastSeenAt,
         availabilityCheckedAt: r.availabilityCheckedAt,
