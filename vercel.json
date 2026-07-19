@@ -1,6 +1,5 @@
 {
   "crons": [
-    { "path": "/api/cron/sync-watchlist", "schedule": "0 15 * * *" },
     { "path": "/api/cron/sync-availability", "schedule": "30 15 * * *" }
   ]
 }
