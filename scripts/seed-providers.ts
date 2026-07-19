@@ -1,4 +1,8 @@
-import "dotenv/config";
+import { config } from "dotenv";
+
+config({ path: ".env.local" });
+config({ path: ".env" });
+
 import { getDb } from "../lib/db";
 import { providers } from "../lib/db/schema";
 import { PROVIDER_SEEDS } from "../lib/availability/providers";
