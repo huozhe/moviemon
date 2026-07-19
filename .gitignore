@@ -40,6 +40,9 @@ next-env.d.ts
 *.db
 *.db-journal
 
-# local watchlist exports
-imdb_watchlist.csv
+# local / bootstrap watchlist exports (personal — keep out of git)
 *.csv
+imdb_watchlist.csv
+notion_watchlist.md
+bootstrap/*
+!bootstrap/README.md

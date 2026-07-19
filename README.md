@@ -38,21 +38,25 @@ When `SITE_PASSWORD` is set, the site redirects unauthenticated visitors to `/lo
 
 Cron and `POST /api/sync` still use `Authorization: Bearer $CRON_SECRET` and skip the cookie.
 
-### Bootstrap from IMDb (optional, once)
+### Bootstrap exports (optional, once)
 
-If you already have titles in Neon, skip this.
+Put one-time exports under [`bootstrap/`](bootstrap/README.md) (gitignored):
 
-1. Open your IMDb watchlist → **⋯** → **Export**
-2. One-shot import (preferred):
+| File | How to import |
+|------|----------------|
+| `bootstrap/notion_watchlist.md` | `npm run import:notion` (Want to Watch only) |
+| `bootstrap/imdb_watchlist.csv` | `POST /api/sync` with `csvText`, or host + `IMDB_WATCHLIST_CSV_URL` |
 
 ```bash
+# Notion markdown export
+npm run import:notion
+
+# IMDb CSV (example)
 curl -X POST "$ORIGIN/api/sync" \
   -H "Authorization: Bearer $CRON_SECRET" \
   -H "Content-Type: application/json" \
   -d '{"kind":"watchlist","csvText":"<paste full CSV>"}'
 ```
-
-Or set `IMDB_WATCHLIST_CSV_URL` and call `POST /api/sync` with `{"kind":"watchlist"}`.
 
 Import is **additive only** — it never removes titles from MovieMon. Day-to-day adds/removes are done in the UI (Settings → Add; **Remove** on cards).
 

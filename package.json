@@ -11,7 +11,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "seed": "tsx scripts/seed-providers.ts"
+    "seed": "tsx scripts/seed-providers.ts",
+    "import:notion": "tsx --env-file=.env.local scripts/import-notion-watchlist.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
