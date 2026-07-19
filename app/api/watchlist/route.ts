@@ -13,7 +13,7 @@ export const maxDuration = 30;
  * POST   { "imdbId": "tt…" | url }  → add / re-add
  * DELETE { "imdbId": "tt…" | url }  → soft-remove (on_list=false)
  *
- * No auth (single-tenant personal tool). Protect the deployment URL if needed.
+ * Protected by middleware session cookie when SITE_PASSWORD is set.
  */
 export async function POST(req: Request) {
   let imdbId: string | undefined;

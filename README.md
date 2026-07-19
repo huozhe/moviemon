@@ -19,12 +19,24 @@ Design: [`docs/plans/watchlist-streaming-availability-v1.md`](docs/plans/watchli
 ```bash
 cp .env.example .env.local
 # fill DATABASE_URL, CRON_SECRET, WATCHMODE_API_KEY
+# optional login: SITE_PASSWORD + AUTH_SECRET
 
 npm install
 npm run db:push          # or db:generate && db:migrate
 npm run seed             # seed Netflix / Max / Prime / YouTube TV
 npm run dev
 ```
+
+### Login (shared password)
+
+When `SITE_PASSWORD` is set, the site redirects unauthenticated visitors to `/login`. A signed httpOnly cookie session lasts 30 days.
+
+| Env | Purpose |
+|-----|---------|
+| `SITE_PASSWORD` | Shared password (omit to leave the site open — fine for local) |
+| `AUTH_SECRET` | Signs the session JWT (falls back to `CRON_SECRET` if unset) |
+
+Cron and `POST /api/sync` still use `Authorization: Bearer $CRON_SECRET` and skip the cookie.
 
 ### Bootstrap from IMDb (optional, once)
 
@@ -72,7 +84,7 @@ Requires `Authorization: Bearer $CRON_SECRET`. Watchlist cron is **disabled** (l
 
 Manual: `POST /api/sync` with the same auth and body `{"kind":"availability"}`.
 
-Watchlist API (no auth; personal single-tenant):
+Watchlist API (requires login cookie when `SITE_PASSWORD` is set):
 
 - `POST /api/watchlist` `{"imdbId":"tt…"}` — add
 - `DELETE /api/watchlist` `{"imdbId":"tt…"}` — soft-remove
@@ -81,10 +93,11 @@ Watchlist API (no auth; personal single-tenant):
 
 1. Connect this GitHub repo to Vercel.
 2. Marketplace → **Neon** (free) → inject `DATABASE_URL`.
-3. Set `WATCHMODE_API_KEY`, `CRON_SECRET`.
+3. Set `WATCHMODE_API_KEY`, `CRON_SECRET`, `SITE_PASSWORD`, `AUTH_SECRET`.
 4. Run migrations + `npm run seed` (or a one-off against prod `DATABASE_URL`).
 5. Bootstrap once from CSV if the DB is empty; then manage the list in the UI.
 6. Hit availability cron once with the Bearer secret.
+7. Open the site → log in with `SITE_PASSWORD`.
 
 ## Hard rules
 

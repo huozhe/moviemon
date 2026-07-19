@@ -42,7 +42,7 @@ I subscribe to **Max**, **Netflix**, **Prime Video**, and **YouTube TV**. I need
 | Watchlist SoT | **Neon `watchlist_items`** — add via UI / `POST /api/watchlist`; remove via UI / `DELETE /api/watchlist` |
 | IMDb role | Metadata (GraphQL) + **optional one-time CSV bootstrap** (`csvText` or `IMDB_WATCHLIST_CSV_URL`). Import is **additive**; never soft-removes. HTML scrape deprecated (AWS WAF). |
 | Title metadata | Bootstrap CSV columns when present; **GraphQL** `graphql.imdb.com` for add-by-id + gap-fill (poster, plot, rating/runtime, seasons) |
-| Auth | **None** for browsing and list edit (single-tenant); secrets only for cron/manual availability sync |
+| Auth | **Shared password** (`SITE_PASSWORD` + `AUTH_SECRET` session cookie) when configured; site open if password unset. Cron/manual sync still use `CRON_SECRET` |
 | Region | US |
 | Providers | Max, Netflix, Prime Video, YouTube TV |
 | Availability data | Watchmode (IMDb ID → sources) |

@@ -66,7 +66,7 @@ export default async function SettingsPage() {
         <PageHeader
           eyebrow="System"
           title="Settings"
-          description="MovieMon is the source of truth for your watchlist. Manage titles here; availability refreshes on a schedule."
+          description="MovieMon is the source of truth for your watchlist. Manage titles here; availability refreshes on a schedule. Site access uses a shared password when configured."
         />
 
         {error ? (

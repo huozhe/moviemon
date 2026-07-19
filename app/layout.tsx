@@ -26,7 +26,7 @@ export const metadata: Metadata = {
     template: "%s · MovieMon",
   },
   description:
-    "Which titles on your IMDb watchlist are on Max, Netflix, Prime Video, and YouTube TV (US).",
+    "Your MovieMon watchlist — what’s on Max, Netflix, Prime Video, and YouTube TV (US).",
   robots: { index: false, follow: false },
 };
 
