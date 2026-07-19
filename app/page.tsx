@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { SiteNav } from "@/components/SiteNav";
 import { PageHeader } from "@/components/PageHeader";
 import { TitleBrowser } from "@/components/TitleBrowser";
@@ -8,6 +9,10 @@ import {
 } from "@/lib/titles/queries";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Available",
+};
 
 export default async function HomePage() {
   let titles: Awaited<ReturnType<typeof listAvailableTitles>> = [];

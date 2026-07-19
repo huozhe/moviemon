@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { SiteNav } from "@/components/SiteNav";
 import { PageHeader } from "@/components/PageHeader";
 import { TitleBrowser } from "@/components/TitleBrowser";
@@ -9,6 +10,10 @@ import {
 } from "@/lib/titles/queries";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Unavailable",
+};
 
 export default async function UnavailablePage() {
   let unavailable: Awaited<ReturnType<typeof listUnavailableTitles>> = [];

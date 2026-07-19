@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, lt, notInArray, or, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import {
   offers,
@@ -19,6 +19,8 @@ const BATCH_LIMIT = 12;
 const STALE_HOURS = 24 * 7;
 /** Pause between titles to reduce burst 429s. */
 const DELAY_MS = 350;
+/** After a 429 on a title, skip that id for this long (next runs). */
+const RATE_LIMIT_COOLDOWN_MS = 2 * 60 * 60 * 1000;
 
 export type SyncAvailabilityResult = {
   status: "ok" | "partial" | "error";
@@ -33,6 +35,7 @@ export type SyncAvailabilityResult = {
  * - Caches Watchmode id on titles (skips search on later runs)
  * - Sets availability_checked_at even when zero offers
  * - Continues past per-title errors; stops the batch on 429
+ * - Cooldown: titles named in recent 429 errors are skipped ~2h
  */
 export async function syncAvailability(
   limit = BATCH_LIMIT,
@@ -41,7 +44,6 @@ export async function syncAvailability(
   const db = getDb();
 
   try {
-    // Titles that already have offer rows were checked before this column existed
     await db.execute(sql`
       UPDATE watchlist_items AS w
       SET availability_checked_at = s.max_checked
@@ -54,7 +56,19 @@ export async function syncAvailability(
         AND w.availability_checked_at IS NULL
     `);
 
+    const cooldownIds = await loadRateLimitCooldownIds(db);
     const staleBefore = new Date(Date.now() - STALE_HOURS * 60 * 60 * 1000);
+
+    const filters = [
+      eq(watchlistItems.onList, true),
+      or(
+        isNull(watchlistItems.availabilityCheckedAt),
+        lt(watchlistItems.availabilityCheckedAt, staleBefore),
+      ),
+    ];
+    if (cooldownIds.length > 0) {
+      filters.push(notInArray(watchlistItems.imdbId, cooldownIds));
+    }
 
     const candidates = await db
       .select({
@@ -63,17 +77,11 @@ export async function syncAvailability(
       })
       .from(watchlistItems)
       .innerJoin(titles, eq(titles.imdbId, watchlistItems.imdbId))
-      .where(
-        and(
-          eq(watchlistItems.onList, true),
-          or(
-            isNull(watchlistItems.availabilityCheckedAt),
-            lt(watchlistItems.availabilityCheckedAt, staleBefore),
-          ),
-        ),
-      )
+      .where(and(...filters))
       .orderBy(
         sql`case when ${watchlistItems.availabilityCheckedAt} is null then 0 else 1 end`,
+        // Rotate among never-checked so one failing id is not always first
+        asc(watchlistItems.imdbId),
         asc(watchlistItems.availabilityCheckedAt),
       )
       .limit(limit);
@@ -111,10 +119,10 @@ export async function syncAvailability(
             imdbId,
             error: err instanceof Error ? err.message : String(err),
           });
+          // Stop the batch — further calls will likely 429 too
           break;
         }
 
-        // Invalid cached id → clear and retry once
         if (
           err instanceof WatchmodeHttpError &&
           (err.status === 404 || err.status === 400) &&
@@ -186,6 +194,7 @@ export async function syncAvailability(
         rateLimited,
         errorCount: errors.length,
         staleHours: STALE_HOURS,
+        cooldownSkipped: cooldownIds.length,
       },
       error: errorSummary,
     });
@@ -212,6 +221,41 @@ export async function syncAvailability(
     }
     return { status: "error", error };
   }
+}
+
+/** IDs mentioned in recent rate-limit errors — skip for RATE_LIMIT_COOLDOWN_MS. */
+async function loadRateLimitCooldownIds(
+  db: ReturnType<typeof getDb>,
+): Promise<string[]> {
+  const since = new Date(Date.now() - RATE_LIMIT_COOLDOWN_MS);
+  const rows = await db
+    .select({
+      error: syncRuns.error,
+      stats: syncRuns.stats,
+      startedAt: syncRuns.startedAt,
+    })
+    .from(syncRuns)
+    .where(
+      and(
+        eq(syncRuns.kind, "availability"),
+        sql`${syncRuns.startedAt} >= ${since}`,
+      ),
+    )
+    .orderBy(sql`${syncRuns.startedAt} desc`)
+    .limit(15);
+
+  const ids = new Set<string>();
+  for (const r of rows) {
+    const stats = r.stats as { rateLimited?: boolean } | null;
+    const looks429 =
+      stats?.rateLimited === true ||
+      (typeof r.error === "string" && r.error.includes("429"));
+    if (!looks429 || !r.error) continue;
+    for (const m of r.error.matchAll(/\b(tt\d{7,})\b/g)) {
+      ids.add(m[1]);
+    }
+  }
+  return [...ids];
 }
 
 async function refreshOneTitle(
@@ -249,7 +293,6 @@ async function refreshOneTitle(
     await db.insert(offers).values(rows);
   }
 
-  // Always mark checked on successful API response (including zero offers)
   await db
     .update(watchlistItems)
     .set({ availabilityCheckedAt: now })

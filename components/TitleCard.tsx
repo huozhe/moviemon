@@ -2,10 +2,15 @@ import Image from "next/image";
 import { ProviderBadges } from "./ProviderBadges";
 import { PlotExpand } from "./PlotExpand";
 
+function isTvType(titleType: string | null | undefined) {
+  const t = (titleType ?? "").toLowerCase();
+  return t === "tv" || t.includes("series") || t.includes("tv");
+}
+
 function typeLabel(titleType: string | null) {
   const t = (titleType ?? "").toLowerCase();
   if (t === "movie" || t.includes("movie") || t === "feature") return "Movie";
-  if (t === "tv" || t.includes("series") || t.includes("tv")) return "TV";
+  if (isTvType(titleType)) return "TV";
   return titleType ? titleType : "Title";
 }
 
@@ -14,8 +19,15 @@ function formatRating(rating: number | null | undefined) {
   return rating.toFixed(1);
 }
 
-function formatRuntime(minutes: number | null | undefined) {
+/** Movies: "2h 10m". TV: "42m/ep" (IMDb runtime is usually per episode). */
+function formatRuntime(
+  minutes: number | null | undefined,
+  titleType: string | null | undefined,
+) {
   if (minutes == null || Number.isNaN(minutes) || minutes <= 0) return null;
+  if (isTvType(titleType)) {
+    return `${minutes}m/ep`;
+  }
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
   if (h <= 0) return `${m}m`;
@@ -53,7 +65,7 @@ export function TitleCard({
       ? (webUrls?.[providerIds[0]] ?? null)
       : null;
   const ratingText = formatRating(imdbRating ?? null);
-  const runtimeText = formatRuntime(runtimeMinutes ?? null);
+  const runtimeText = formatRuntime(runtimeMinutes ?? null, titleType);
 
   return (
     <article className="group rounded-2xl bg-raised/80 p-3 ring-1 ring-border transition hover:bg-raised hover:ring-border-strong sm:p-4">
@@ -92,7 +104,11 @@ export function TitleCard({
               {runtimeText ? (
                 <span
                   className="font-mono text-[11px] tabular-nums text-faint"
-                  title="Runtime"
+                  title={
+                    isTvType(titleType)
+                      ? "Typical episode length"
+                      : "Runtime"
+                  }
                 >
                   {runtimeText}
                 </span>

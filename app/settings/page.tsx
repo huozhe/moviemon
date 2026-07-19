@@ -1,5 +1,7 @@
+import type { Metadata } from "next";
 import { SiteNav } from "@/components/SiteNav";
 import { PageHeader } from "@/components/PageHeader";
+import { RelativeTime } from "@/components/RelativeTime";
 import {
   getListStats,
   listPendingTitles,
@@ -9,17 +11,9 @@ import {
 
 export const dynamic = "force-dynamic";
 
-function formatWhen(value: Date | string | null | undefined) {
-  if (!value) return "—";
-  const d = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(d.getTime())) return String(value);
-  return d.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
+export const metadata: Metadata = {
+  title: "Settings",
+};
 
 export default async function SettingsPage() {
   let providers: Awaited<ReturnType<typeof listProviders>> = [];
@@ -46,6 +40,16 @@ export default async function SettingsPage() {
       error = e instanceof Error ? e.message : String(e);
     }
   }
+
+  const lastRateLimited = syncRuns.find(
+    (r) =>
+      r.kind === "availability" &&
+      (r.status === "partial" || r.status === "error") &&
+      (r.error?.includes("429") ||
+        (r.stats &&
+          typeof r.stats === "object" &&
+          (r.stats as { rateLimited?: boolean }).rateLimited)),
+  );
 
   return (
     <>
@@ -97,7 +101,27 @@ export default async function SettingsPage() {
           <div className="mb-6 rounded-2xl bg-accent-soft px-4 py-3 text-sm text-accent ring-1 ring-accent/25">
             Availability catch-up: <strong>{pendingCount}</strong> title
             {pendingCount === 1 ? "" : "s"} not checked yet (about 12 per sync
-            run).
+            run). Watchmode free quota is low — if you see HTTP 429 in the log,
+            wait and re-run; failed titles cool down ~2h so the same id is not
+            hammered every pass.
+          </div>
+        ) : null}
+
+        {lastRateLimited ? (
+          <div className="mb-6 rounded-2xl bg-warn/10 px-4 py-3 text-sm text-warn ring-1 ring-warn/30">
+            Last availability sync hit a Watchmode rate limit
+            {lastRateLimited.error ? (
+              <>
+                {" "}
+                (
+                <span className="font-mono text-[11px]">
+                  {lastRateLimited.error.slice(0, 80)}
+                  {lastRateLimited.error.length > 80 ? "…" : ""}
+                </span>
+                )
+              </>
+            ) : null}
+            . Progress from that run is kept; retry later.
           </div>
         ) : null}
 
@@ -149,6 +173,12 @@ export default async function SettingsPage() {
               {syncRuns.map((r, i) => {
                 const ok = r.status === "ok";
                 const partial = r.status === "partial";
+                const iso =
+                  r.startedAt instanceof Date
+                    ? r.startedAt.toISOString()
+                    : r.startedAt
+                      ? new Date(r.startedAt).toISOString()
+                      : null;
                 return (
                   <li
                     key={r.id}
@@ -173,7 +203,7 @@ export default async function SettingsPage() {
                       </span>
                     </div>
                     <p className="mt-1 text-xs text-faint">
-                      {formatWhen(r.startedAt)}
+                      <RelativeTime iso={iso} />
                       {r.error ? (
                         <span className="mt-1 block max-h-16 overflow-hidden text-danger/90">
                           {r.error}

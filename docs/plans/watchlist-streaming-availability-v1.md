@@ -363,7 +363,7 @@ No auth-related env vars in v1.
 |---------|----------|
 | IMDb CSV missing / parse error | Sync errors; keep last good `on_list` |
 | IMDb HTML (if tried) | WAF 202; clear error; do not wipe list |
-| Watchmode quota (429) | Partial batch; progress kept; retry later |
+| Watchmode quota (429) | Stop batch (`partial`); keep progress; **cooldown ~2h** on titles named in recent 429 errors so the same id is not hammered every run |
 | GraphQL meta fail | Skip title meta; do not fail whole watchlist sync |
 | Cron timeout | Small LIMIT + never-checked first |
 | YTTV missing from API | Document gap; still show Max/Netflix/Prime |
@@ -375,7 +375,23 @@ No auth-related env vars in v1.
 2. **Skeleton** — Next.js + Neon + schema + seed — **done**.
 3. **Watchlist path** — CSV + gap-fill meta + UI — **done**.
 4. **Availability path** — cron + available/unavailable — **done** (catch-up may still be partial under quota).
-5. **Polish** — filters, sort, posters, ratings, plot — **done** (provider enable UI + “recently seen” sort still open).
+5. **Polish** — filters, sort, posters, ratings, plot, relative sync times, page titles, TV `m/ep` — **done** for the first review pass.
+
+## Shelved backlog (do not build yet)
+
+Recorded from product review + API research. Implement only when explicitly pulled.
+
+| Idea | Notes / findings | Priority if revived |
+|------|------------------|---------------------|
+| **Unavailable-tab enrichment** | Drop redundant “Not on your services” pill; optionally show rent/buy or other services not in enabled set. Schema already allows rent/buy monotypes; today we only surface enabled subscription-ish offers. | Highest product value among shelved |
+| **“Pick something for me”** | Random available title; cheap delight. | Low effort |
+| **Watched / hide** | Local soft-hide so queue shrinks without editing IMDb. Diverges from “pure IMDb mirror.” | Medium product decision |
+| **“Leaving soon” badge** | **Not available on free Watchmode.** `/title/{id}/sources` has no end/leave/expires fields (only source, type, region, urls, format, price, seasons, episodes). `/releases` has **arrival** `source_release_date`, not departures. `/changes` is **paid-only** (401 on free). DIY alternative later: detect offer **drops** between daily syncs (retrospective, not calendar “leaving”). Other vendors may expose expiring windows. | Blocked on free Watchmode |
+| **Provider enable toggles in Settings UI** | DB has `providers.enabled`; seed only today. | Medium |
+| **Sort by recently seen on list** | `last_seen_at` already stored. | Low |
+| **Trakt (or similar) list source** | True API automation instead of CSV re-export. | Medium |
+| **Auth / deployment protection** | Site is fully public by design. | Future plan |
+| **PWA / push** | Out of v1. | Future plan |
 
 ## Deploy checklist
 
@@ -398,11 +414,10 @@ No auth-related env vars in v1.
 
 ## Future plans (out of scope here)
 
-Add separate docs under `docs/plans/` when needed, for example:
+See **Shelved backlog** above for near-term parked ideas. Separate docs under `docs/plans/` when larger:
 
 - Auth / deployment protection
 - PWA + web push (“title just landed on Max”)
 - Trakt (or similar) as automated list source
-- Provider enable toggles in Settings UI
-- Alternate availability providers
+- Alternate availability providers (if leave dates or better YTTV needed)
 - Android deep-link shell

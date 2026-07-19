@@ -44,15 +44,30 @@ function matchesType(titleType: string | null, filter: string) {
   return true;
 }
 
+function isTvType(titleType: string | null | undefined) {
+  const t = (titleType ?? "").toLowerCase();
+  return t === "tv" || t.includes("series") || t.includes("tv");
+}
+
 function sortTitles(
   list: BrowserTitle[],
   sort: SortKey,
   dir: SortDir,
+  typeFilter: string,
 ): BrowserTitle[] {
   const mult = dir === "asc" ? 1 : -1;
   const copy = [...list];
+  // Runtime mixes movie length vs TV episode length — when "All", sort movies
+  // among themselves first, then TV among themselves.
+  const bandRuntime = sort === "runtime" && typeFilter === "all";
 
   copy.sort((a, b) => {
+    if (bandRuntime) {
+      const aTv = isTvType(a.titleType) ? 1 : 0;
+      const bTv = isTvType(b.titleType) ? 1 : 0;
+      if (aTv !== bTv) return aTv - bTv; // movies first
+    }
+
     let cmp = 0;
 
     if (sort === "title") {
@@ -61,7 +76,7 @@ function sortTitles(
       const ay = a.year;
       const by = b.year;
       if (ay == null && by == null) cmp = 0;
-      else if (ay == null) cmp = 1; // nulls last regardless of dir
+      else if (ay == null) cmp = 1;
       else if (by == null) cmp = -1;
       else cmp = ay - by;
     } else if (sort === "runtime") {
@@ -72,21 +87,18 @@ function sortTitles(
       else if (br == null) cmp = -1;
       else cmp = ar - br;
     } else {
-      // rating
       const ar = a.imdbRating;
       const br = b.imdbRating;
       if (ar == null && br == null) cmp = 0;
-      else if (ar == null) cmp = 1; // nulls last
+      else if (ar == null) cmp = 1;
       else if (br == null) cmp = -1;
       else cmp = ar - br;
     }
 
     if (cmp === 0 && sort !== "title") {
-      cmp = a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
-      return cmp; // tie-break always A→Z
+      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
     }
 
-    // Keep nulls last for numeric fields even when descending
     if (sort !== "title") {
       if (sort === "year") {
         if (a.year == null && b.year != null) return 1;
@@ -108,11 +120,14 @@ function sortTitles(
   return copy;
 }
 
-function dirLabel(sort: SortKey, dir: SortDir): string {
+function dirLabel(sort: SortKey, dir: SortDir, typeFilter: string): string {
   if (sort === "title") return dir === "asc" ? "A→Z" : "Z→A";
   if (sort === "year") return dir === "asc" ? "oldest first" : "newest first";
   if (sort === "runtime") {
-    return dir === "asc" ? "shortest first" : "longest first";
+    const base = dir === "asc" ? "shortest first" : "longest first";
+    if (typeFilter === "all") return `${base} (movies, then TV · ep length)`;
+    if (typeFilter === "tv") return `${base} (per episode)`;
+    return base;
   }
   return dir === "asc" ? "lowest first" : "highest first";
 }
@@ -151,7 +166,7 @@ export function TitleBrowser({
         (t.imdbRating != null && String(t.imdbRating).includes(q))
       );
     });
-    return sortTitles(list, sort, dir);
+    return sortTitles(list, sort, dir, typeFilter);
   }, [titles, query, typeFilter, providerFilter, sort, dir]);
 
   function selectSort(key: SortKey) {
@@ -229,7 +244,7 @@ export function TitleBrowser({
                   onClick={() => selectSort(s.id)}
                   title={
                     active
-                      ? `Click to reverse (${dirLabel(s.id, dir === "asc" ? "desc" : "asc")})`
+                      ? `Click to reverse (${dirLabel(s.id, dir === "asc" ? "desc" : "asc", typeFilter)})`
                       : `Sort by ${s.label}`
                   }
                   className={
@@ -294,7 +309,7 @@ export function TitleBrowser({
           <span className="tabular-nums text-muted">{filtered.length}</span> of{" "}
           <span className="tabular-nums text-muted">{titles.length}</span>
           {" · "}
-          {dirLabel(sort, dir)}
+          {dirLabel(sort, dir, typeFilter)}
         </p>
       </div>
 
