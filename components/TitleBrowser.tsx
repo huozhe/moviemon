@@ -3,15 +3,9 @@
 import { useMemo, useState } from "react";
 import { TitleCard } from "./TitleCard";
 import { PROVIDER_LABELS } from "./ProviderBadges";
+import type { BrowserTitle } from "@/lib/titles/queries";
 
-export type BrowserTitle = {
-  imdbId: string;
-  name: string;
-  year: number | null;
-  titleType: string | null;
-  providerIds: string[];
-  webUrls: Record<string, string | null>;
-};
+export type { BrowserTitle };
 
 const PROVIDER_FILTERS = ["netflix", "max", "prime", "youtubetv"] as const;
 const TYPE_FILTERS = [
@@ -19,6 +13,14 @@ const TYPE_FILTERS = [
   { id: "movie", label: "Movies" },
   { id: "tv", label: "TV" },
 ] as const;
+
+export type SortKey = "title" | "year" | "rating";
+
+const SORT_OPTIONS: Array<{ id: SortKey; label: string }> = [
+  { id: "title", label: "Title" },
+  { id: "year", label: "Year" },
+  { id: "rating", label: "IMDb ★" },
+];
 
 function matchesType(titleType: string | null, filter: string) {
   if (filter === "all") return true;
@@ -32,24 +34,53 @@ function matchesType(titleType: string | null, filter: string) {
   return true;
 }
 
+function sortTitles(list: BrowserTitle[], sort: SortKey): BrowserTitle[] {
+  const copy = [...list];
+  copy.sort((a, b) => {
+    if (sort === "title") {
+      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    }
+    if (sort === "year") {
+      const ay = a.year ?? -1;
+      const by = b.year ?? -1;
+      if (by !== ay) return by - ay; // newest first
+      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    }
+    // rating — highest first; nulls last
+    const ar = a.imdbRating;
+    const br = b.imdbRating;
+    if (ar == null && br == null) {
+      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    }
+    if (ar == null) return 1;
+    if (br == null) return -1;
+    if (br !== ar) return br - ar;
+    return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+  });
+  return copy;
+}
+
 export function TitleBrowser({
   titles,
   emptyMessage,
   variant = "available",
   enableProviderFilter = true,
+  defaultSort = "title",
 }: {
   titles: BrowserTitle[];
   emptyMessage: string;
   variant?: "available" | "unavailable";
   enableProviderFilter?: boolean;
+  defaultSort?: SortKey;
 }) {
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [providerFilter, setProviderFilter] = useState<string | null>(null);
+  const [sort, setSort] = useState<SortKey>(defaultSort);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return titles.filter((t) => {
+    const list = titles.filter((t) => {
       if (!matchesType(t.titleType, typeFilter)) return false;
       if (providerFilter && !t.providerIds.includes(providerFilter)) {
         return false;
@@ -58,10 +89,12 @@ export function TitleBrowser({
       return (
         t.name.toLowerCase().includes(q) ||
         t.imdbId.toLowerCase().includes(q) ||
-        String(t.year ?? "").includes(q)
+        String(t.year ?? "").includes(q) ||
+        (t.imdbRating != null && String(t.imdbRating).includes(q))
       );
     });
-  }, [titles, query, typeFilter, providerFilter]);
+    return sortTitles(list, sort);
+  }, [titles, query, typeFilter, providerFilter, sort]);
 
   if (titles.length === 0) {
     return (
@@ -115,6 +148,30 @@ export function TitleBrowser({
             })}
           </div>
 
+          <div
+            className="flex flex-wrap gap-1"
+            role="group"
+            aria-label="Sort by"
+          >
+            {SORT_OPTIONS.map((s) => {
+              const active = sort === s.id;
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setSort(s.id)}
+                  className={
+                    active
+                      ? "rounded-lg bg-accent px-2.5 py-1 text-xs font-semibold text-void"
+                      : "rounded-lg bg-raised px-2.5 py-1 text-xs font-medium text-muted ring-1 ring-border hover:text-ink"
+                  }
+                >
+                  {s.label}
+                </button>
+              );
+            })}
+          </div>
+
           {enableProviderFilter ? (
             <div
               className="flex flex-wrap gap-1"
@@ -126,7 +183,7 @@ export function TitleBrowser({
                 onClick={() => setProviderFilter(null)}
                 className={
                   providerFilter === null
-                    ? "rounded-lg bg-accent px-2.5 py-1 text-xs font-semibold text-void"
+                    ? "rounded-lg bg-ink/90 px-2.5 py-1 text-xs font-semibold text-void"
                     : "rounded-lg bg-raised px-2.5 py-1 text-xs font-medium text-muted ring-1 ring-border hover:text-ink"
                 }
               >
@@ -143,7 +200,7 @@ export function TitleBrowser({
                     }
                     className={
                       active
-                        ? "rounded-lg bg-accent px-2.5 py-1 text-xs font-semibold text-void"
+                        ? "rounded-lg bg-ink/90 px-2.5 py-1 text-xs font-semibold text-void"
                         : "rounded-lg bg-raised px-2.5 py-1 text-xs font-medium text-muted ring-1 ring-border hover:text-ink"
                     }
                   >
@@ -159,6 +216,8 @@ export function TitleBrowser({
           Showing{" "}
           <span className="tabular-nums text-muted">{filtered.length}</span> of{" "}
           <span className="tabular-nums text-muted">{titles.length}</span>
+          {sort === "rating" ? " · highest rating first" : null}
+          {sort === "year" ? " · newest year first" : null}
         </p>
       </div>
 
@@ -172,6 +231,7 @@ export function TitleBrowser({
               setQuery("");
               setTypeFilter("all");
               setProviderFilter(null);
+              setSort(defaultSort);
             }}
           >
             Clear filters
@@ -186,6 +246,7 @@ export function TitleBrowser({
                 name={t.name}
                 year={t.year}
                 titleType={t.titleType}
+                imdbRating={t.imdbRating}
                 providerIds={t.providerIds}
                 webUrls={t.webUrls}
                 variant={variant}

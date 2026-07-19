@@ -7,11 +7,17 @@ function typeLabel(titleType: string | null) {
   return titleType ? titleType : "Title";
 }
 
+function formatRating(rating: number | null | undefined) {
+  if (rating == null || Number.isNaN(rating)) return null;
+  return rating.toFixed(1);
+}
+
 export function TitleCard({
   imdbId,
   name,
   year,
   titleType,
+  imdbRating,
   providerIds,
   webUrls,
   variant = "available",
@@ -20,6 +26,7 @@ export function TitleCard({
   name: string;
   year: number | null;
   titleType: string | null;
+  imdbRating?: number | null;
   providerIds: string[];
   webUrls?: Record<string, string | null>;
   variant?: "available" | "unavailable";
@@ -28,6 +35,7 @@ export function TitleCard({
     providerIds.length > 0
       ? (webUrls?.[providerIds[0]] ?? null)
       : null;
+  const ratingText = formatRating(imdbRating ?? null);
 
   return (
     <article className="group rounded-2xl bg-raised/80 p-4 ring-1 ring-border transition hover:bg-raised hover:ring-border-strong sm:p-5">
@@ -40,6 +48,17 @@ export function TitleCard({
             {year != null ? (
               <span className="font-mono text-[11px] tabular-nums text-faint">
                 {year}
+              </span>
+            ) : null}
+            {ratingText ? (
+              <span
+                className="inline-flex items-center gap-1 rounded-md bg-accent-soft px-1.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums text-accent ring-1 ring-accent/25"
+                title="IMDb rating (cached)"
+              >
+                <span aria-hidden className="text-[10px]">
+                  ★
+                </span>
+                {ratingText}
               </span>
             ) : null}
           </div>

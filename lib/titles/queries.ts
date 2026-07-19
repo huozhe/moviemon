@@ -24,11 +24,25 @@ export type TitleRow = {
   year: number | null;
   titleType: string | null;
   posterUrl: string | null;
+  imdbRating: number | null;
+  imdbVotes: number | null;
   lastSeenAt: Date;
   providerIds: string[];
   webUrls: Record<string, string | null>;
   /** null = availability not checked yet */
   availabilityCheckedAt?: Date | null;
+};
+
+export type BrowserTitle = {
+  imdbId: string;
+  name: string;
+  year: number | null;
+  titleType: string | null;
+  imdbRating: number | null;
+  imdbVotes: number | null;
+  lastSeenAt: string | null;
+  providerIds: string[];
+  webUrls: Record<string, string | null>;
 };
 
 /**
@@ -44,6 +58,8 @@ export async function listAvailableTitles(): Promise<TitleRow[]> {
       year: titles.year,
       titleType: titles.titleType,
       posterUrl: titles.posterUrl,
+      imdbRating: titles.imdbRating,
+      imdbVotes: titles.imdbVotes,
       lastSeenAt: watchlistItems.lastSeenAt,
       availabilityCheckedAt: watchlistItems.availabilityCheckedAt,
       providerId: offers.providerId,
@@ -67,7 +83,6 @@ export async function listAvailableTitles(): Promise<TitleRow[]> {
 
 /**
  * On-list titles that were checked and have no qualifying offers.
- * Pending (never checked) titles are excluded — use listPendingTitles.
  */
 export async function listUnavailableTitles(): Promise<TitleRow[]> {
   const db = getDb();
@@ -92,6 +107,8 @@ export async function listUnavailableTitles(): Promise<TitleRow[]> {
       year: titles.year,
       titleType: titles.titleType,
       posterUrl: titles.posterUrl,
+      imdbRating: titles.imdbRating,
+      imdbVotes: titles.imdbVotes,
       lastSeenAt: watchlistItems.lastSeenAt,
       availabilityCheckedAt: watchlistItems.availabilityCheckedAt,
     })
@@ -127,6 +144,8 @@ export async function listPendingTitles(): Promise<TitleRow[]> {
       year: titles.year,
       titleType: titles.titleType,
       posterUrl: titles.posterUrl,
+      imdbRating: titles.imdbRating,
+      imdbVotes: titles.imdbVotes,
       lastSeenAt: watchlistItems.lastSeenAt,
       availabilityCheckedAt: watchlistItems.availabilityCheckedAt,
     })
@@ -195,28 +214,26 @@ export async function getListStats() {
   const onList = onListRows.length;
   const pending = pendingRows.length;
   const available = availableRows.length;
-  // checked but not available
   const unavailable = Math.max(0, onList - pending - available);
 
   return { available, unavailable, pending, onList };
 }
 
-/** Serialize TitleRow for client components (strip Date objects). */
-export function toBrowserTitles(
-  rows: TitleRow[],
-): Array<{
-  imdbId: string;
-  name: string;
-  year: number | null;
-  titleType: string | null;
-  providerIds: string[];
-  webUrls: Record<string, string | null>;
-}> {
+/** Serialize TitleRow for client components. */
+export function toBrowserTitles(rows: TitleRow[]): BrowserTitle[] {
   return rows.map((t) => ({
     imdbId: t.imdbId,
     name: t.name,
     year: t.year,
     titleType: t.titleType,
+    imdbRating: t.imdbRating,
+    imdbVotes: t.imdbVotes,
+    lastSeenAt:
+      t.lastSeenAt instanceof Date
+        ? t.lastSeenAt.toISOString()
+        : t.lastSeenAt
+          ? String(t.lastSeenAt)
+          : null,
     providerIds: t.providerIds,
     webUrls: t.webUrls,
   }));
@@ -229,6 +246,8 @@ function groupTitleRows(
     year: number | null;
     titleType: string | null;
     posterUrl: string | null;
+    imdbRating: number | null;
+    imdbVotes: number | null;
     lastSeenAt: Date;
     availabilityCheckedAt?: Date | null;
     providerId: string;
@@ -245,6 +264,8 @@ function groupTitleRows(
         year: r.year,
         titleType: r.titleType,
         posterUrl: r.posterUrl,
+        imdbRating: r.imdbRating,
+        imdbVotes: r.imdbVotes,
         lastSeenAt: r.lastSeenAt,
         availabilityCheckedAt: r.availabilityCheckedAt,
         providerIds: [],

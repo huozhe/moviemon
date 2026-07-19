@@ -28,6 +28,7 @@ export function TitleList({
             name={t.name}
             year={t.year}
             titleType={t.titleType}
+            imdbRating={t.imdbRating}
             providerIds={t.providerIds}
             webUrls={t.webUrls}
             variant={variant}

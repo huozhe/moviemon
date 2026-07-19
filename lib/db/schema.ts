@@ -4,6 +4,7 @@ import {
   jsonb,
   pgTable,
   primaryKey,
+  real,
   text,
   timestamp,
   bigserial,
@@ -17,6 +18,10 @@ export const titles = pgTable("titles", {
   posterUrl: text("poster_url"),
   /** Cached Watchmode title id — skips /search on later availability passes */
   watchmodeId: integer("watchmode_id"),
+  /** Cached IMDb aggregate rating (1–10), from CSV export or GraphQL gap-fill */
+  imdbRating: real("imdb_rating"),
+  imdbVotes: integer("imdb_votes"),
+  ratingFetchedAt: timestamp("rating_fetched_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

@@ -3,6 +3,9 @@ export type WatchlistTitle = {
   title: string;
   year?: number;
   type?: "movie" | "tv" | "other";
+  /** IMDb aggregate rating from CSV export when present */
+  imdbRating?: number;
+  imdbVotes?: number;
 };
 
 const IMDB_ID_RE = /tt\d{7,}/g;
@@ -118,6 +121,20 @@ export function parseWatchlistCsv(csv: string): WatchlistTitle[] {
   const typeIdx = header.findIndex(
     (h) => h === "title type" || h === "titletype" || h === "type",
   );
+  const ratingIdx = header.findIndex(
+    (h) =>
+      h === "imdb rating" ||
+      h === "imdbrating" ||
+      h === "rating" ||
+      h === "aggregate rating",
+  );
+  const votesIdx = header.findIndex(
+    (h) =>
+      h === "num votes" ||
+      h === "numvotes" ||
+      h === "votes" ||
+      h === "vote count",
+  );
 
   if (constIdx === -1) {
     throw new Error(
@@ -140,11 +157,31 @@ export function parseWatchlistCsv(csv: string): WatchlistTitle[] {
     const year = yearRaw && /^\d{4}$/.test(yearRaw) ? Number(yearRaw) : undefined;
     const typeRaw = typeIdx >= 0 ? cols[typeIdx]?.trim() ?? "" : "";
 
+    let imdbRating: number | undefined;
+    if (ratingIdx >= 0) {
+      const raw = (cols[ratingIdx] ?? "").trim();
+      if (raw) {
+        const n = Number(raw);
+        if (!Number.isNaN(n) && n >= 0 && n <= 10) imdbRating = n;
+      }
+    }
+
+    let imdbVotes: number | undefined;
+    if (votesIdx >= 0) {
+      const raw = (cols[votesIdx] ?? "").trim().replace(/,/g, "");
+      if (raw) {
+        const n = Number(raw);
+        if (!Number.isNaN(n) && n >= 0) imdbVotes = Math.round(n);
+      }
+    }
+
     titles.push({
       imdbId,
       title,
       year,
       type: mapCsvTitleType(typeRaw),
+      imdbRating,
+      imdbVotes,
     });
   }
 
