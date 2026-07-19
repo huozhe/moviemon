@@ -1,19 +1,28 @@
 import { SiteNav } from "@/components/SiteNav";
-import { TitleList } from "@/components/TitleList";
-import { listAvailableTitles } from "@/lib/titles/queries";
+import { PageHeader } from "@/components/PageHeader";
+import { TitleBrowser } from "@/components/TitleBrowser";
+import {
+  getListStats,
+  listAvailableTitles,
+  toBrowserTitles,
+} from "@/lib/titles/queries";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   let titles: Awaited<ReturnType<typeof listAvailableTitles>> = [];
+  let stats = { available: 0, unavailable: 0, pending: 0, onList: 0 };
   let error: string | null = null;
 
   if (!process.env.DATABASE_URL) {
     error =
-      "DATABASE_URL is not set. Connect Neon via Vercel Marketplace, then run migrations and seed.";
+      "Database is not connected. Add DATABASE_URL (Neon on Vercel), then run migrations and seed.";
   } else {
     try {
-      titles = await listAvailableTitles();
+      [titles, stats] = await Promise.all([
+        listAvailableTitles(),
+        getListStats(),
+      ]);
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     }
@@ -21,23 +30,36 @@ export default async function HomePage() {
 
   return (
     <>
-      <SiteNav current="/" />
-      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight">Available now</h1>
-          <p className="mt-1 text-sm text-zinc-600">
-            On your IMDb watchlist and streamable on an enabled service (US
-            subscription / free / ads).
-          </p>
-        </div>
+      <SiteNav
+        current="/"
+        counts={{
+          available: stats.available,
+          unavailable: stats.unavailable,
+          pending: stats.pending,
+        }}
+      />
+      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6 pb-16">
+        <PageHeader
+          eyebrow="Ready to watch"
+          title="Available now"
+          description="On your IMDb watchlist and streamable on Max, Netflix, Prime, or YouTube TV (US subscription / free / ads)."
+          count={titles.length}
+          countLabel="ready"
+        />
+
         {error ? (
-          <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <div
+            role="alert"
+            className="rounded-2xl bg-danger/10 px-4 py-3 text-sm text-danger ring-1 ring-danger/30"
+          >
             {error}
-          </p>
+          </div>
         ) : (
-          <TitleList
-            titles={titles}
-            emptyMessage="No available titles yet. Run a watchlist + availability sync after setup."
+          <TitleBrowser
+            titles={toBrowserTitles(titles)}
+            emptyMessage="Nothing available yet. Import your watchlist and run an availability sync — new titles show up here when they land on your services."
+            variant="available"
+            enableProviderFilter
           />
         )}
       </main>

@@ -1,8 +1,11 @@
 import { SiteNav } from "@/components/SiteNav";
-import { TitleList } from "@/components/TitleList";
+import { PageHeader } from "@/components/PageHeader";
+import { TitleBrowser } from "@/components/TitleBrowser";
 import {
+  getListStats,
   listPendingTitles,
   listUnavailableTitles,
+  toBrowserTitles,
 } from "@/lib/titles/queries";
 
 export const dynamic = "force-dynamic";
@@ -10,15 +13,17 @@ export const dynamic = "force-dynamic";
 export default async function UnavailablePage() {
   let unavailable: Awaited<ReturnType<typeof listUnavailableTitles>> = [];
   let pending: Awaited<ReturnType<typeof listPendingTitles>> = [];
+  let stats = { available: 0, unavailable: 0, pending: 0, onList: 0 };
   let error: string | null = null;
 
   if (!process.env.DATABASE_URL) {
     error = "DATABASE_URL is not set.";
   } else {
     try {
-      [unavailable, pending] = await Promise.all([
+      [unavailable, pending, stats] = await Promise.all([
         listUnavailableTitles(),
         listPendingTitles(),
+        getListStats(),
       ]);
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
@@ -27,34 +32,48 @@ export default async function UnavailablePage() {
 
   return (
     <>
-      <SiteNav current="/unavailable" />
-      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight">Unavailable</h1>
-          <p className="mt-1 text-sm text-zinc-600">
-            Checked titles still on your list with no subscription-ish offer on
-            Max, Netflix, Prime, or YouTube TV.
-          </p>
-        </div>
+      <SiteNav
+        current="/unavailable"
+        counts={{
+          available: stats.available,
+          unavailable: stats.unavailable,
+          pending: stats.pending,
+        }}
+      />
+      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6 pb-16">
+        <PageHeader
+          eyebrow="Still on the list"
+          title="Unavailable"
+          description="Checked titles with no subscription-style offer on your enabled services. Rent/buy-only does not count."
+          count={unavailable.length}
+          countLabel="waiting"
+        />
+
         {error ? (
-          <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <div
+            role="alert"
+            className="rounded-2xl bg-danger/10 px-4 py-3 text-sm text-danger ring-1 ring-danger/30"
+          >
             {error}
-          </p>
+          </div>
         ) : (
           <>
             {pending.length > 0 ? (
-              <p className="mb-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
-                {pending.length} title{pending.length === 1 ? "" : "s"} still
-                pending availability sync (not listed below until checked).
-              </p>
+              <div className="mb-4 rounded-2xl bg-accent-soft px-4 py-3 text-sm text-accent ring-1 ring-accent/25">
+                <strong className="font-semibold">{pending.length}</strong> title
+                {pending.length === 1 ? "" : "s"} still pending a Watchmode
+                check — they appear here after the next successful sync.
+              </div>
             ) : null}
-            <TitleList
-              titles={unavailable}
+            <TitleBrowser
+              titles={toBrowserTitles(unavailable)}
               emptyMessage={
                 pending.length > 0
-                  ? "No checked-unavailable titles yet — finish availability sync first."
-                  : "No unavailable titles — either the list is empty or everything is available."
+                  ? "No checked-unavailable titles yet. Finish availability catch-up first."
+                  : "Every checked title is available on at least one of your services — nice."
               }
+              variant="unavailable"
+              enableProviderFilter={false}
             />
           </>
         )}

@@ -1,5 +1,12 @@
 import { ProviderBadges } from "./ProviderBadges";
 
+function typeLabel(titleType: string | null) {
+  const t = (titleType ?? "").toLowerCase();
+  if (t === "movie" || t.includes("movie") || t === "feature") return "Movie";
+  if (t === "tv" || t.includes("series") || t.includes("tv")) return "TV";
+  return titleType ? titleType : "Title";
+}
+
 export function TitleCard({
   imdbId,
   name,
@@ -7,6 +14,7 @@ export function TitleCard({
   titleType,
   providerIds,
   webUrls,
+  variant = "available",
 }: {
   imdbId: string;
   name: string;
@@ -14,30 +22,64 @@ export function TitleCard({
   titleType: string | null;
   providerIds: string[];
   webUrls?: Record<string, string | null>;
+  variant?: "available" | "unavailable";
 }) {
+  const primaryHref =
+    providerIds.length > 0
+      ? (webUrls?.[providerIds[0]] ?? null)
+      : null;
+
   return (
-    <article className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h2 className="text-base font-semibold text-zinc-900">
-            {name}
+    <article className="group rounded-2xl bg-raised/80 p-4 ring-1 ring-border transition hover:bg-raised hover:ring-border-strong sm:p-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+        <div className="min-w-0 flex-1">
+          <div className="mb-1.5 flex flex-wrap items-center gap-2">
+            <span className="rounded-md bg-surface px-1.5 py-0.5 font-mono text-[10px] font-medium uppercase tracking-wider text-muted ring-1 ring-border">
+              {typeLabel(titleType)}
+            </span>
             {year != null ? (
-              <span className="ml-1.5 font-normal text-zinc-500">({year})</span>
+              <span className="font-mono text-[11px] tabular-nums text-faint">
+                {year}
+              </span>
             ) : null}
+          </div>
+
+          <h2 className="font-display text-lg font-semibold leading-snug tracking-tight text-ink sm:text-xl">
+            {primaryHref ? (
+              <a
+                href={primaryHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-accent"
+              >
+                {name}
+              </a>
+            ) : (
+              name
+            )}
           </h2>
-          <p className="mt-0.5 text-xs text-zinc-500">
-            {titleType ?? "title"} ·{" "}
+
+          <p className="mt-1.5">
             <a
               href={`https://www.imdb.com/title/${imdbId}/`}
               target="_blank"
               rel="noopener noreferrer"
-              className="underline-offset-2 hover:underline"
+              className="font-mono text-[11px] text-faint hover:text-muted"
             >
-              {imdbId}
+              IMDb {imdbId}
             </a>
           </p>
         </div>
-        <ProviderBadges providerIds={providerIds} webUrls={webUrls} />
+
+        <div className="sm:max-w-[55%] sm:pt-0.5 sm:text-right">
+          {variant === "unavailable" ? (
+            <span className="inline-flex rounded-full bg-surface px-2.5 py-1 text-xs font-medium text-faint ring-1 ring-border">
+              Not on your services
+            </span>
+          ) : (
+            <ProviderBadges providerIds={providerIds} webUrls={webUrls} />
+          )}
+        </div>
       </div>
     </article>
   );

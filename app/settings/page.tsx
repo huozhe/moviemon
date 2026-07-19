@@ -1,5 +1,7 @@
 import { SiteNav } from "@/components/SiteNav";
+import { PageHeader } from "@/components/PageHeader";
 import {
+  getListStats,
   listPendingTitles,
   listProviders,
   listRecentSyncRuns,
@@ -7,24 +9,39 @@ import {
 
 export const dynamic = "force-dynamic";
 
+function formatWhen(value: Date | string | null | undefined) {
+  if (!value) return "—";
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 export default async function SettingsPage() {
   let providers: Awaited<ReturnType<typeof listProviders>> = [];
   let syncRuns: Awaited<ReturnType<typeof listRecentSyncRuns>> = [];
   let pendingCount = 0;
+  let stats = { available: 0, unavailable: 0, pending: 0, onList: 0 };
   let error: string | null = null;
 
   if (!process.env.DATABASE_URL) {
     error = "DATABASE_URL is not set.";
   } else {
     try {
-      const [p, runs, pending] = await Promise.all([
+      const [p, runs, pending, s] = await Promise.all([
         listProviders(),
         listRecentSyncRuns(8),
         listPendingTitles(),
+        getListStats(),
       ]);
       providers = p;
       syncRuns = runs;
       pendingCount = pending.length;
+      stats = s;
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     }
@@ -32,56 +49,88 @@ export default async function SettingsPage() {
 
   return (
     <>
-      <SiteNav current="/settings" />
-      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-          <p className="mt-1 text-sm text-zinc-600">
-            Providers, last sync status, and manual sync (secret-gated API).
-          </p>
-        </div>
+      <SiteNav
+        current="/settings"
+        counts={{
+          available: stats.available,
+          unavailable: stats.unavailable,
+          pending: stats.pending,
+        }}
+      />
+      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6 pb-16">
+        <PageHeader
+          eyebrow="System"
+          title="Settings"
+          description="Services, sync health, and how to refresh your list."
+        />
 
         {error ? (
-          <p className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <div
+            role="alert"
+            className="mb-6 rounded-2xl bg-danger/10 px-4 py-3 text-sm text-danger ring-1 ring-danger/30"
+          >
             {error}
-          </p>
+          </div>
         ) : null}
 
+        <section className="mb-6 grid grid-cols-3 gap-2">
+          {[
+            { label: "On list", value: stats.onList },
+            { label: "Available", value: stats.available },
+            { label: "Pending", value: pendingCount },
+          ].map((s) => (
+            <div
+              key={s.label}
+              className="rounded-2xl bg-raised px-3 py-3 text-center ring-1 ring-border"
+            >
+              <p className="font-display text-xl font-bold tabular-nums text-ink">
+                {s.value}
+              </p>
+              <p className="mt-0.5 text-[11px] uppercase tracking-wide text-faint">
+                {s.label}
+              </p>
+            </div>
+          ))}
+        </section>
+
         {pendingCount > 0 ? (
-          <p className="mb-6 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
-            Availability catch-up:{" "}
-            <strong>{pendingCount}</strong> title
-            {pendingCount === 1 ? "" : "s"} not yet checked (batch of 12 per
-            sync; never-checked first).
-          </p>
+          <div className="mb-6 rounded-2xl bg-accent-soft px-4 py-3 text-sm text-accent ring-1 ring-accent/25">
+            Availability catch-up: <strong>{pendingCount}</strong> title
+            {pendingCount === 1 ? "" : "s"} not checked yet (about 12 per sync
+            run).
+          </div>
         ) : null}
 
         <section className="mb-8">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">
-            Providers
+          <h2 className="mb-3 font-display text-sm font-semibold uppercase tracking-[0.12em] text-faint">
+            Services
           </h2>
           {providers.length === 0 ? (
-            <p className="text-sm text-zinc-500">
+            <p className="text-sm text-muted">
               No providers seeded. Run{" "}
-              <code className="rounded bg-zinc-100 px-1">npm run seed</code>{" "}
+              <code className="rounded bg-raised px-1.5 py-0.5 font-mono text-xs text-accent ring-1 ring-border">
+                npm run seed
+              </code>{" "}
               after migrations.
             </p>
           ) : (
-            <ul className="divide-y divide-zinc-200 rounded-xl border border-zinc-200 bg-white">
-              {providers.map((p) => (
+            <ul className="overflow-hidden rounded-2xl ring-1 ring-border">
+              {providers.map((p, i) => (
                 <li
                   key={p.id}
-                  className="flex items-center justify-between px-4 py-3 text-sm"
+                  className={`flex items-center justify-between bg-raised px-4 py-3 text-sm ${
+                    i > 0 ? "border-t border-border" : ""
+                  }`}
                 >
-                  <span className="font-medium">{p.name}</span>
+                  <span className="font-medium text-ink">{p.name}</span>
                   <span
                     className={
                       p.enabled
-                        ? "text-emerald-700"
-                        : "text-zinc-400 line-through"
+                        ? "rounded-full bg-ok/15 px-2 py-0.5 text-xs font-semibold text-ok"
+                        : "rounded-full bg-surface px-2 py-0.5 text-xs text-faint line-through"
                     }
                   >
-                    {p.enabled ? "Enabled" : "Disabled"}
+                    {p.enabled ? "On" : "Off"}
                   </span>
                 </li>
               ))}
@@ -90,71 +139,99 @@ export default async function SettingsPage() {
         </section>
 
         <section className="mb-8">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">
-            Recent sync runs
+          <h2 className="mb-3 font-display text-sm font-semibold uppercase tracking-[0.12em] text-faint">
+            Recent syncs
           </h2>
           {syncRuns.length === 0 ? (
-            <p className="text-sm text-zinc-500">No sync runs recorded yet.</p>
+            <p className="text-sm text-muted">No sync runs recorded yet.</p>
           ) : (
-            <ul className="divide-y divide-zinc-200 rounded-xl border border-zinc-200 bg-white text-sm">
-              {syncRuns.map((r) => (
-                <li key={r.id} className="px-4 py-3">
-                  <div className="flex justify-between gap-2">
-                    <span className="font-medium">{r.kind}</span>
-                    <span
-                      className={
-                        r.status === "ok" ? "text-emerald-700" : "text-red-600"
-                      }
-                    >
-                      {r.status}
-                    </span>
-                  </div>
-                  <p className="mt-0.5 text-xs text-zinc-500">
-                    {r.startedAt?.toISOString?.() ?? String(r.startedAt)}
-                    {r.error ? ` · ${r.error}` : null}
-                  </p>
-                </li>
-              ))}
+            <ul className="overflow-hidden rounded-2xl ring-1 ring-border">
+              {syncRuns.map((r, i) => {
+                const ok = r.status === "ok";
+                const partial = r.status === "partial";
+                return (
+                  <li
+                    key={r.id}
+                    className={`bg-raised px-4 py-3 text-sm ${
+                      i > 0 ? "border-t border-border" : ""
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-medium capitalize text-ink">
+                        {r.kind}
+                      </span>
+                      <span
+                        className={
+                          ok
+                            ? "text-xs font-semibold text-ok"
+                            : partial
+                              ? "text-xs font-semibold text-warn"
+                              : "text-xs font-semibold text-danger"
+                        }
+                      >
+                        {r.status}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-faint">
+                      {formatWhen(r.startedAt)}
+                      {r.error ? (
+                        <span className="mt-1 block max-h-16 overflow-hidden text-danger/90">
+                          {r.error}
+                        </span>
+                      ) : null}
+                    </p>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>
 
-        <section className="mb-8 rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-600">
-          <h2 className="mb-2 font-semibold text-zinc-900">Watchlist source</h2>
-          <p>
-            IMDb blocks server HTML scrapes (AWS WAF). Set{" "}
-            <code className="rounded bg-zinc-100 px-1">
+        <section className="mb-6 rounded-2xl bg-raised p-4 ring-1 ring-border">
+          <h2 className="font-display text-base font-semibold text-ink">
+            Watchlist source
+          </h2>
+          <p className="mt-2 text-sm leading-relaxed text-muted">
+            IMDb blocks automated page scrapes. Export your public watchlist as
+            CSV and set{" "}
+            <code className="rounded bg-void px-1.5 py-0.5 font-mono text-[11px] text-accent">
               IMDB_WATCHLIST_CSV_URL
             </code>{" "}
-            to a hosted IMDb export CSV (Gist raw URL, etc.), or POST{" "}
-            <code className="rounded bg-zinc-100 px-1">csvText</code> below.
-          </p>
-        </section>
-
-        <section className="rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-600">
-          <h2 className="mb-2 font-semibold text-zinc-900">Manual sync</h2>
-          <p className="mb-2">
-            POST{" "}
-            <code className="rounded bg-zinc-100 px-1">/api/sync</code> with
-            header{" "}
-            <code className="rounded bg-zinc-100 px-1">
-              Authorization: Bearer $CRON_SECRET
+            to a stable raw URL, or POST the CSV once with{" "}
+            <code className="rounded bg-void px-1.5 py-0.5 font-mono text-[11px] text-accent">
+              csvText
             </code>
             .
           </p>
-          <pre className="overflow-x-auto rounded-lg bg-zinc-900 p-3 text-xs text-zinc-100">
-            {`curl -X POST "$ORIGIN/api/sync" \\
+        </section>
+
+        <details className="rounded-2xl bg-raised ring-1 ring-border open:pb-1">
+          <summary className="cursor-pointer list-none px-4 py-3 font-display text-base font-semibold text-ink marker:content-none [&::-webkit-details-marker]:hidden">
+            <span className="flex items-center justify-between gap-2">
+              Manual sync (API)
+              <span className="text-xs font-normal text-faint">curl</span>
+            </span>
+          </summary>
+          <div className="border-t border-border px-4 py-3 text-sm text-muted">
+            <p className="mb-3">
+              Send{" "}
+              <code className="rounded bg-void px-1 font-mono text-[11px] text-accent">
+                Authorization: Bearer $CRON_SECRET
+              </code>{" "}
+              to{" "}
+              <code className="rounded bg-void px-1 font-mono text-[11px] text-accent">
+                POST /api/sync
+              </code>
+              .
+            </p>
+            <pre className="overflow-x-auto rounded-xl bg-void p-3 font-mono text-[11px] leading-relaxed text-muted ring-1 ring-border">
+              {`curl -X POST "$ORIGIN/api/sync" \\
   -H "Authorization: Bearer $CRON_SECRET" \\
   -H "Content-Type: application/json" \\
-  -d '{"kind":"both"}'
-
-# one-off with local IMDb CSV export:
-# jq -n --rawfile c ~/Downloads/watchlist.csv '{kind:"watchlist",csvText:$c}' \\
-#   | curl -sS -X POST "$ORIGIN/api/sync" \\
-#       -H "Authorization: Bearer $CRON_SECRET" \\
-#       -H "Content-Type: application/json" -d @-`}
-          </pre>
-        </section>
+  -d '{"kind":"availability"}'`}
+            </pre>
+          </div>
+        </details>
       </main>
     </>
   );

@@ -1,23 +1,26 @@
 import { TitleCard } from "./TitleCard";
 import type { TitleRow } from "@/lib/titles/queries";
 
+/** Simple non-interactive list (settings, etc.). Prefer TitleBrowser for main lists. */
 export function TitleList({
   titles,
   emptyMessage,
+  variant = "available",
 }: {
   titles: TitleRow[];
   emptyMessage: string;
+  variant?: "available" | "unavailable";
 }) {
   if (titles.length === 0) {
     return (
-      <p className="rounded-xl border border-dashed border-zinc-300 bg-zinc-50 px-4 py-10 text-center text-sm text-zinc-500">
-        {emptyMessage}
-      </p>
+      <div className="rounded-2xl border border-dashed border-border-strong bg-raised/40 px-5 py-12 text-center">
+        <p className="text-sm text-muted">{emptyMessage}</p>
+      </div>
     );
   }
 
   return (
-    <ul className="flex flex-col gap-3">
+    <ul className="flex flex-col gap-2.5">
       {titles.map((t) => (
         <li key={t.imdbId}>
           <TitleCard
@@ -27,6 +30,7 @@ export function TitleList({
             titleType={t.titleType}
             providerIds={t.providerIds}
             webUrls={t.webUrls}
+            variant={variant}
           />
         </li>
       ))}

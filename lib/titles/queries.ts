@@ -161,6 +161,67 @@ export async function listRecentSyncRuns(limit = 10) {
     .limit(limit);
 }
 
+export async function getListStats() {
+  const db = getDb();
+
+  const [onListRows, pendingRows, availableRows] = await Promise.all([
+    db
+      .select({ imdbId: watchlistItems.imdbId })
+      .from(watchlistItems)
+      .where(eq(watchlistItems.onList, true)),
+    db
+      .select({ imdbId: watchlistItems.imdbId })
+      .from(watchlistItems)
+      .where(
+        and(
+          eq(watchlistItems.onList, true),
+          isNull(watchlistItems.availabilityCheckedAt),
+        ),
+      ),
+    db
+      .selectDistinct({ imdbId: offers.imdbId })
+      .from(offers)
+      .innerJoin(providers, eq(providers.id, offers.providerId))
+      .innerJoin(watchlistItems, eq(watchlistItems.imdbId, offers.imdbId))
+      .where(
+        and(
+          eq(watchlistItems.onList, true),
+          eq(providers.enabled, true),
+          inArray(offers.monotype, [...AVAILABLE_MONOTYPES]),
+        ),
+      ),
+  ]);
+
+  const onList = onListRows.length;
+  const pending = pendingRows.length;
+  const available = availableRows.length;
+  // checked but not available
+  const unavailable = Math.max(0, onList - pending - available);
+
+  return { available, unavailable, pending, onList };
+}
+
+/** Serialize TitleRow for client components (strip Date objects). */
+export function toBrowserTitles(
+  rows: TitleRow[],
+): Array<{
+  imdbId: string;
+  name: string;
+  year: number | null;
+  titleType: string | null;
+  providerIds: string[];
+  webUrls: Record<string, string | null>;
+}> {
+  return rows.map((t) => ({
+    imdbId: t.imdbId,
+    name: t.name,
+    year: t.year,
+    titleType: t.titleType,
+    providerIds: t.providerIds,
+    webUrls: t.webUrls,
+  }));
+}
+
 function groupTitleRows(
   rows: Array<{
     imdbId: string;
