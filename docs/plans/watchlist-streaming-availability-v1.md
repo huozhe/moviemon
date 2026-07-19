@@ -1,8 +1,10 @@
 # MovieMon v1 — IMDb watchlist streaming availability
 
-**Status:** Draft  
+**Status:** In progress (core app shipped; daily CSV automation + full availability catch-up open)  
 **Date:** 2026-07-18  
-**Audience:** Single-user personal tool (California, USA)
+**Last updated:** 2026-07-19  
+**Audience:** Single-user personal tool (California, USA)  
+**Prod:** https://moviemon-psi.vercel.app · **Repo:** https://github.com/huozhe/moviemon
 
 ## Problem
 
@@ -12,20 +14,20 @@ I subscribe to **Max**, **Netflix**, **Prime Video**, and **YouTube TV**. My wat
 
 ## Goals
 
-1. Automatically pull my **public IMDb watchlist** (no manual CSV as the primary path).
+1. Keep Neon in sync with my IMDb watchlist via a **reliable machine-readable export** (CSV), without relying on fragile HTML scrapes.
 2. Resolve US streaming availability for each title against my four subscriptions.
-3. Show **Available now** vs **Not available** in a couch-friendly web UI.
-4. Refresh daily with zero manual work after setup.
+3. Show **Available now** vs **Not available** in a couch-friendly web UI (search, filter, sort, posters, ratings, plot).
+4. Refresh on a schedule with minimal manual work after setup (re-export/host CSV when the list changes; crons for sync).
 
 ## Non-goals (v1)
 
 - User login / multi-user accounts
-- Private IMDb watchlist (must be public)
+- Private IMDb watchlist (export is from the user’s account; list privacy is still recommended public for any HTML fallback)
 - Native Android / iOS apps
 - Scraping Netflix/Max/Prime catalogs directly
 - Recommendations, social features, ratings AI
 - Multi-region support (US only)
-- CSV import as primary path (optional emergency fallback later)
+- Official IMDb AWS Data Exchange (catalog only; not personal watchlists; enterprise pricing)
 
 ## Locked decisions
 
@@ -36,31 +38,37 @@ I subscribe to **Max**, **Netflix**, **Prime Video**, and **YouTube TV**. My wat
 | Hosting | Vercel |
 | Jobs | Vercel Cron |
 | Database | **Neon Postgres** via Vercel Marketplace (free plan) |
-| IMDb source | **Public watchlist URL** (`IMDB_WATCHLIST_URL`) |
+| IMDb watchlist source | **`IMDB_WATCHLIST_CSV_URL`** (IMDb ⋯ → Export). Optional one-off `csvText` on `POST /api/sync`. HTML `IMDB_WATCHLIST_URL` is **deprecated** (AWS WAF blocks server fetches). |
+| Title metadata | CSV columns when present (rating, votes, runtime); **GraphQL** `graphql.imdb.com` gap-fill for poster, plot, missing rating/runtime |
 | Auth | **None** for browsing; secrets only for cron/manual sync |
 | Region | US |
 | Providers | Max, Netflix, Prime Video, YouTube TV |
-| Availability data | Watchmode (or equivalent API with IMDb ID lookup) |
+| Availability data | Watchmode (IMDb ID → sources) |
 
 ### Why web, not Android (v1)
 
-Core job is read + filter + link out. A website ships faster with FE/BE skills, works on phone and laptop, and avoids Play Store overhead. Native can wait if deep-linking or offline later justify it.
+Core job is read + filter + link out. A website ships faster, works on phone and laptop, and avoids Play Store overhead.
 
 ### Why Neon on Vercel
 
-Standalone Vercel Postgres is discontinued. New projects provision Postgres from the [Vercel Marketplace](https://vercel.com/docs/postgres). **Neon** is the free, one-click option; credentials are injected as env vars. Prefer `@neondatabase/serverless` or Drizzle + Neon driver — do **not** start new code on legacy `@vercel/postgres`.
+Standalone Vercel Postgres is discontinued. New projects provision Postgres from the [Vercel Marketplace](https://vercel.com/docs/postgres). Prefer `@neondatabase/serverless` + Drizzle — **not** legacy `@vercel/postgres`.
 
 ### Why no login
 
-v1 is single-tenant and personal. Anyone with the URL can see the list. Optional later: Vercel Deployment Protection or a hard-to-guess URL + `noindex`. Do not build NextAuth for v1.
+v1 is single-tenant and personal. Anyone with the URL can see the list. Optional later: Vercel Deployment Protection or hard-to-guess URL + `noindex`.
 
-### IMDb constraint
+### IMDb constraint (updated)
 
-IMDb has **no** personal “my watchlist” API for normal apps. Official IMDb API (AWS Data Exchange) is commercial title metadata, not account lists. v1 therefore:
+IMDb has **no** personal “my watchlist” API for normal apps. Official IMDb API (AWS Data Exchange) is commercial **title metadata**, not account lists.
 
-1. Requires the watchlist to be **public**.
-2. Server-fetches `IMDB_WATCHLIST_URL` on a schedule.
-3. Parses titles into a stable internal shape.
+**HTML scrape is not viable (2026):** `www.imdb.com` serves AWS WAF challenges (HTTP 202, `x-amzn-waf-action: challenge`) to non-browser clients. Server-side cron cannot load a public watchlist page reliably.
+
+v1 therefore:
+
+1. User exports watchlist as **CSV** from IMDb.
+2. Host the CSV at a stable fetchable URL (`IMDB_WATCHLIST_CSV_URL`), or one-shot `POST` with `csvText`.
+3. Server parses titles + optional rating/votes/runtime into Neon.
+4. Soft-remove missing ids only after a **successful full** parse.
 
 ## Architecture
 
@@ -71,8 +79,8 @@ Public web (no login)
 ┌───────────────────────────────────────────┐
 │  Next.js on Vercel                        │
 │  GET /              Available now         │
-│  GET /unavailable   Still on list         │
-│  GET /settings      Providers + Sync now  │
+│  GET /unavailable   Checked, not on svcs  │
+│  GET /settings      Providers + sync log  │
 │                                           │
 │  GET /api/cron/sync-watchlist             │
 │  GET /api/cron/sync-availability          │
@@ -81,19 +89,20 @@ Public web (no login)
               │               │
               ▼               ▼
      Neon Postgres      External fetches
-     (Marketplace)      1) Public IMDb watchlist URL
-                        2) Watchmode US offers
+     (Marketplace)      1) IMDb CSV (hosted URL)
+                        2) GraphQL imdb.com (meta gap-fill)
+                        3) Watchmode US offers
 ```
 
 ### Layer responsibilities
 
 | Layer | Responsibility |
 |-------|----------------|
-| UI | List/filter titles; show provider badges; deep links; last-sync status |
-| Sync (watchlist) | Fetch public IMDb URL → upsert titles → soft-remove missing |
-| Sync (availability) | For `on_list` titles, refresh US offers for enabled providers |
-| DB | Cache watchlist + offers; never hit external APIs on every page view |
-| Cron | Daily watchlist then availability; secured with `CRON_SECRET` |
+| UI | List/filter/sort; posters; rating/runtime/plot; provider badges + deep links; pending count; last-sync status |
+| Sync (watchlist) | Fetch/parse CSV → upsert titles (+ CSV ratings) → GraphQL gap-fill → soft-remove missing |
+| Sync (availability) | Never-checked / stale `on_list` titles → Watchmode offers; stop cleanly on 429 |
+| DB | Cache watchlist, meta, offers; never hit external APIs on page view |
+| Cron | Daily watchlist then availability; `CRON_SECRET` |
 
 ## Data model
 
@@ -103,19 +112,26 @@ imdb_id text PRIMARY KEY          -- tt...
 name text NOT NULL
 year int
 title_type text                   -- movie | tv | other
-poster_url text
+runtime_minutes int
+plot text
+poster_url text                   -- Amazon CDN URL only (not image bytes)
+watchmode_id int                  -- cached; skip Watchmode /search
+imdb_rating real                  -- 1–10 aggregate
+imdb_votes int
+rating_fetched_at timestamptz
 updated_at timestamptz
 
 -- watchlist_items
 imdb_id text PRIMARY KEY REFERENCES titles(imdb_id)
 on_list boolean NOT NULL DEFAULT true
 last_seen_at timestamptz NOT NULL
+availability_checked_at timestamptz  -- set after successful sources call (even if zero offers)
 created_at timestamptz NOT NULL DEFAULT now()
 
 -- providers (seed four rows)
 id text PRIMARY KEY               -- netflix | max | prime | youtubetv
 name text NOT NULL
-external_id text                  -- id in Watchmode (or chosen API)
+external_id text                  -- optional Watchmode source id (name-map used today)
 enabled boolean NOT NULL DEFAULT true
 
 -- offers
@@ -129,7 +145,7 @@ PRIMARY KEY (imdb_id, provider_id, monotype)
 -- sync_runs
 id bigserial PRIMARY KEY
 kind text NOT NULL                -- watchlist | availability
-status text NOT NULL              -- ok | error
+status text NOT NULL              -- ok | partial | error
 started_at timestamptz NOT NULL
 finished_at timestamptz
 stats jsonb
@@ -144,18 +160,26 @@ A title is **available** when:
 - there is at least one `offers` row for an **enabled** provider, and
 - `monotype` is subscription-ish: `flatrate`, `free`, or `ads` (not rent/buy by default).
 
-## IMDb public watchlist pull
+**Unavailable** = on list, `availability_checked_at` set, and no qualifying offers.  
+**Pending** = on list, `availability_checked_at` null (not yet checked / not claimed as unavailable).
+
+## IMDb watchlist pull (CSV)
 
 ### Config
 
 ```bash
-IMDB_WATCHLIST_URL=https://www.imdb.com/user/urXXXXXXXX/watchlist
+# Preferred
+IMDB_WATCHLIST_CSV_URL=https://gist.githubusercontent.com/.../raw/.../watchlist.csv
+
+# Optional one-off: POST /api/sync body { "kind": "watchlist", "csvText": "..." }
+# Deprecated (WAF): IMDB_WATCHLIST_URL=https://www.imdb.com/user/.../watchlist
 ```
 
 Prerequisites:
 
-1. IMDb → Watchlist → privacy → **Public**
-2. URL loads in an logged-out / incognito session
+1. IMDb watchlist → **Export** (CSV with `Const`, `Title`, optional `IMDb Rating`, `Num Votes`, `Runtime (mins)`, etc.).
+2. Host file at a URL the Vercel function can `fetch` (Gist raw, object storage, etc.).
+3. Re-upload when the list changes (until a better list source exists).
 
 ### Client contract
 
@@ -165,28 +189,24 @@ export type WatchlistTitle = {
   title: string;
   year?: number;
   type?: "movie" | "tv" | "other";
+  imdbRating?: number;
+  imdbVotes?: number;
+  runtimeMinutes?: number;
 };
 
-export async function fetchPublicWatchlist(
-  url: string
-): Promise<WatchlistTitle[]>;
+export async function fetchWatchlist(): Promise<WatchlistTitle[]>;
+// prefers IMDB_WATCHLIST_CSV_URL → parseWatchlistCsv
 ```
-
-### Implementation notes
-
-- Run on **Node** runtime (not Edge).
-- Fetch with a normal browser-like User-Agent.
-- Extract `tt\d+` plus title/year; paginate if needed.
-- Prefer stable embedded data over brittle CSS selectors when possible.
 
 ### Sync algorithm (`sync-watchlist`)
 
-1. `remote = fetchPublicWatchlist(IMDB_WATCHLIST_URL)`
-2. Upsert `titles`; set `watchlist_items.on_list = true`, `last_seen_at = now()`
+1. `remote = fetchWatchlist()` (CSV URL or `csvText`)
+2. Upsert `titles` (including CSV rating/runtime when present); set `watchlist_items.on_list = true`, `last_seen_at = now()`
 3. Soft-remove: ids not in `remote` → `on_list = false` **only after a successful full fetch**
-4. Write `sync_runs` with counts
+4. GraphQL gap-fill for missing `imdb_rating` / `poster_url` / `runtime_minutes` / `plot` (capped batch)
+5. Write `sync_runs` with counts
 
-**Hard rule:** if the pull fails (HTTP error, parse error, empty unexpected), abort and leave existing `on_list` rows unchanged.
+**Hard rule:** if the pull fails (HTTP/parse/empty unexpected), abort and leave existing `on_list` rows unchanged.
 
 ## Availability sync
 
@@ -199,26 +219,32 @@ export type Offer = {
   webUrl?: string;
 };
 
-export async function getUSOffers(imdbId: string): Promise<Offer[]>;
+// Uses cached titles.watchmode_id when set (1 sources call vs search+sources)
+export async function getUSOffers(
+  imdbId: string,
+  cachedWatchmodeId?: number | null
+): Promise<{ offers: Offer[]; watchmodeId: number | null }>;
 ```
 
 ### Algorithm (`sync-availability`)
 
-1. Select `on_list` titles, prefer stale (`last_checked_at` null or older than ~20h).
-2. Batch with rate limits (e.g. 40 per invocation) to stay under serverless timeouts.
-3. Replace that title’s offer rows for tracked providers; set `last_checked_at`.
-4. Record `sync_runs`.
+1. Backfill `availability_checked_at` from existing offers if needed.
+2. Select `on_list` titles where `availability_checked_at` is null or older than ~**7 days**; never-checked first.
+3. Batch **~12** per invocation; **~350ms** delay between titles (low Watchmode quota).
+4. Per title: `getUSOffers` → replace offer rows → set `availability_checked_at` (even if zero offers); cache `watchmode_id`.
+5. On **429**: stop batch, status `partial`, keep progress; do not wipe offers for failed titles.
+6. Record `sync_runs` (`ok` | `partial` | `error`).
 
 ### Provider seed
 
 | App id | Display | Notes |
 |--------|---------|--------|
-| `netflix` | Netflix | Map `external_id` from availability API |
+| `netflix` | Netflix | Name-map from Watchmode today; `external_id` reserved |
 | `max` | Max | Formerly HBO Max |
 | `prime` | Prime Video | |
-| `youtubetv` | YouTube TV | Validate early — live-TV packages are often weaker in catalog APIs |
+| `youtubetv` | YouTube TV | Often weaker in catalog APIs — validate or document partial |
 
-Region fixed to **US** in code (California does not need a separate locale).
+Region fixed to **US** in code.
 
 ## Vercel Cron
 
@@ -231,30 +257,24 @@ Region fixed to **US** in code (California does not need a separate locale).
 }
 ```
 
-(~8:00 / 8:30 AM PT → 15:00 / 15:30 UTC; adjust if desired.)
+(~8:00 / 8:30 AM PT → 15:00 / 15:30 UTC.)
 
-Secure every cron handler:
+Secure cron handlers with `Authorization: Bearer ${CRON_SECRET}`.
 
-```ts
-if (req.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) {
-  return new Response("Unauthorized", { status: 401 });
-}
-```
-
-Manual **Sync now** on `/settings` calls the same sync functions, gated by `CRON_SECRET` or `SYNC_SECRET` so anonymous visitors cannot burn API quota.
+Manual sync: `POST /api/sync` with same secret (or `SYNC_SECRET`), body `{ "kind": "watchlist" | "availability" | "both", "csvText"?: "..." }`. Settings UI documents curl (no in-browser secret form).
 
 ## Routes (v1)
 
 | Path | Access | Purpose |
 |------|--------|---------|
 | `/` | Public | Available on enabled services |
-| `/unavailable` | Public | On list, not on those services |
-| `/settings` | Public UI | Providers, last sync, Sync now |
-| `/api/cron/sync-watchlist` | `CRON_SECRET` | Daily IMDb pull |
-| `/api/cron/sync-availability` | `CRON_SECRET` | Daily offers refresh |
+| `/unavailable` | Public | Checked, not on those services (+ pending banner) |
+| `/settings` | Public UI | Providers, stats, sync log, manual API docs |
+| `/api/cron/sync-watchlist` | `CRON_SECRET` | CSV pull + meta gap-fill |
+| `/api/cron/sync-availability` | `CRON_SECRET` | Offers refresh |
 | `/api/sync` | Secret | Manual sync trigger |
 
-## Suggested repo layout
+## Repo layout (as shipped)
 
 ```text
 moviemon/
@@ -267,29 +287,36 @@ moviemon/
     api/sync/route.ts
   components/
     TitleCard.tsx
+    TitleBrowser.tsx      # search, filter, sort
+    PlotExpand.tsx
     ProviderBadges.tsx
-    Filters.tsx
+    SiteNav.tsx
+    PageHeader.tsx
   lib/
     db/schema.ts
     db/index.ts
     imdb/watchlist-client.ts
+    imdb/ratings.ts         # GraphQL meta
     availability/watchmode.ts
     availability/providers.ts
     sync/sync-watchlist.ts
     sync/sync-availability.ts
-  docs/plans/                    # this folder
+    sync/auth.ts
+    titles/queries.ts
+  docs/plans/
   scripts/seed-providers.ts
   vercel.json
   drizzle.config.ts
   .env.example
+  .grok/STATE.md            # session handoff (tracked in git)
 ```
 
 ### Stack glue
 
 - Next.js App Router + TypeScript + Tailwind
 - Drizzle ORM + Neon serverless driver
-- Server Components for list pages
-- Node runtime for cron/sync + IMDb fetch
+- Server Components for pages; client browser for filter/sort/plot expand
+- Node runtime for cron/sync + external fetches
 
 ## Environment variables
 
@@ -299,9 +326,11 @@ DATABASE_URL=
 
 # Cron / manual sync
 CRON_SECRET=
+# SYNC_SECRET=   # optional alternate for POST /api/sync
 
-# IMDb
-IMDB_WATCHLIST_URL=https://www.imdb.com/user/ur.../watchlist
+# IMDb watchlist (CSV primary)
+IMDB_WATCHLIST_CSV_URL=
+# IMDB_WATCHLIST_URL=   # deprecated; WAF-blocked
 
 # Availability
 WATCHMODE_API_KEY=
@@ -309,59 +338,63 @@ WATCHMODE_API_KEY=
 
 No auth-related env vars in v1.
 
-## UI (minimal)
+## UI (shipped)
 
 **Available now**
 
-- Title, year, type, provider chips, outbound web link
-- Filters: provider multi-select, movie vs TV
-- Sort: title, year, recently seen on list
+- Poster, title, year, runtime, IMDb rating, expandable plot
+- Provider chips with outbound deep links
+- Search; movie/TV filter; provider filter
+- Sort: title, year, runtime, rating — re-click field toggles asc/desc
+- Nav counts + pending strip when catch-up remains
 
 **Unavailable**
 
-- Same list shape with empty providers
+- Same list shape without providers; pending count banner
 
 **Settings**
 
-- Enabled providers
-- Last watchlist / availability sync from `sync_runs`
-- Sync now (secret-gated API)
+- List stats, providers enabled, recent `sync_runs`
+- Manual sync curl docs (secret-gated API)
 
 ## Failure modes
 
 | Failure | Behavior |
 |---------|----------|
-| IMDb HTML/export changes | Sync errors; keep last good list |
-| Availability API quota | Batch + cache; never call per pageview |
-| Cron timeout | Cursor + `LIMIT` on stale titles |
-| YTTV missing from API | Document gap; still show Max/Netflix/Prime correctly |
-| False “available” | Only count subscription-ish monotypes |
+| IMDb CSV missing / parse error | Sync errors; keep last good `on_list` |
+| IMDb HTML (if tried) | WAF 202; clear error; do not wipe list |
+| Watchmode quota (429) | Partial batch; progress kept; retry later |
+| GraphQL meta fail | Skip title meta; do not fail whole watchlist sync |
+| Cron timeout | Small LIMIT + never-checked first |
+| YTTV missing from API | Document gap; still show Max/Netflix/Prime |
+| False “available” | Only subscription-ish monotypes |
 
-## Build sequence
+## Build sequence (status)
 
-1. **Spike** — Public URL returns full list; Watchmode returns offers for ~10 IMDb ids including the four providers where possible.
-2. **Skeleton** — Next.js + Neon + schema + seed providers.
-3. **Watchlist path** — Cron + manual sync → DB → raw list UI.
-4. **Availability path** — Cron + join → Available / Unavailable.
-5. **Polish** — Filters, deep links, last-sync status.
+1. ~~Spike public HTML~~ → **replaced by CSV** after WAF.
+2. **Skeleton** — Next.js + Neon + schema + seed — **done**.
+3. **Watchlist path** — CSV + gap-fill meta + UI — **done**.
+4. **Availability path** — cron + available/unavailable — **done** (catch-up may still be partial under quota).
+5. **Polish** — filters, sort, posters, ratings, plot — **done** (provider enable UI + “recently seen” sort still open).
 
 ## Deploy checklist
 
-1. Create app, connect GitHub → Vercel.
-2. Marketplace → **Neon** (free) → connect project.
-3. Set `IMDB_WATCHLIST_URL`, `WATCHMODE_API_KEY`, `CRON_SECRET`.
-4. Make IMDb watchlist public; verify incognito.
-5. Run migrations; seed providers + external ids.
-6. Trigger cron routes once with Bearer secret.
-7. Spot-check `/` against real catalogs.
+1. GitHub → Vercel project connected.
+2. Marketplace → **Neon** → `DATABASE_URL`.
+3. Set `IMDB_WATCHLIST_CSV_URL`, `WATCHMODE_API_KEY`, `CRON_SECRET`.
+4. Export IMDb CSV; host raw URL; verify fetch from outside.
+5. `db:push` (or migrate) + `npm run seed`.
+6. Trigger watchlist then availability cron with Bearer secret.
+7. Spot-check `/` vs real catalogs; note YTTV gaps.
 
 ## Success criteria (v1 done when)
 
-- [ ] Daily cron updates Neon from the public IMDb URL with no manual steps.
-- [ ] Site is fully readable with no login.
+- [ ] Daily cron updates Neon from **hosted CSV** (or documented manual re-export cadence) with no HTML scrape.
+- [x] Site is fully readable with no login.
 - [ ] Available / Unavailable split matches spot-checks for Netflix, Max, and Prime.
 - [ ] YouTube TV validated or explicitly documented as partial.
-- [ ] Failed IMDb fetch never wipes `on_list`.
+- [x] Failed watchlist fetch never wipes `on_list`.
+- [ ] Pending availability catch-up ≈ 0 under normal Watchmode quota (or accepted lag documented).
 
 ## Future plans (out of scope here)
 
@@ -369,6 +402,7 @@ Add separate docs under `docs/plans/` when needed, for example:
 
 - Auth / deployment protection
 - PWA + web push (“title just landed on Max”)
-- CSV fallback import
-- Android deep-link shell
+- Trakt (or similar) as automated list source
+- Provider enable toggles in Settings UI
 - Alternate availability providers
+- Android deep-link shell
