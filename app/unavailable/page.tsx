@@ -49,7 +49,7 @@ export default async function UnavailablePage() {
         <PageHeader
           eyebrow="Still on the list"
           title="Unavailable"
-          description="Checked titles with no subscription-style offer on your enabled services. Rent/buy-only does not count."
+          description="On your MovieMon watchlist, checked, but no subscription-style offer on your enabled services. Rent/buy-only does not count."
           count={unavailable.length}
           countLabel="waiting"
         />

@@ -1,4 +1,4 @@
-import { and, eq, isNull, notInArray, or, sql } from "drizzle-orm";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { titles, watchlistItems, syncRuns } from "@/lib/db/schema";
 import {
@@ -12,6 +12,7 @@ export type SyncWatchlistResult = {
   status: "ok" | "error";
   fetched?: number;
   upserted?: number;
+  /** Always 0 — MovieMon is source of truth; import never removes list items. */
   softRemoved?: number;
   ratingsFromCsv?: number;
   metaFromGraphql?: number;
@@ -22,8 +23,12 @@ const GRAPHQL_GAP_FILL_LIMIT = 80;
 const GRAPHQL_DELAY_MS = 100;
 
 /**
- * Pull watchlist → upsert titles (incl. CSV ratings) → GraphQL gap-fill
- * for missing ratings/posters → soft-remove missing list items.
+ * Bootstrap / merge import from an IMDb CSV (or hosted URL).
+ *
+ * MovieMon (Neon) is the watchlist source of truth. This path only **adds**
+ * titles onto the list. It never soft-removes items missing from the CSV —
+ * remove titles in the UI instead. Intended as a one-time bootstrap, not a
+ * daily mirror of IMDb.
  */
 export async function syncWatchlist(
   csvText?: string,
@@ -49,7 +54,7 @@ export async function syncWatchlist(
   }
 
   if (remote.length === 0) {
-    const error = "Watchlist fetch returned zero titles; aborting soft-remove";
+    const error = "Watchlist import returned zero titles";
     await db.insert(syncRuns).values({
       kind: "watchlist",
       status: "error",
@@ -61,7 +66,6 @@ export async function syncWatchlist(
   }
 
   const now = new Date();
-  const remoteIds = remote.map((t) => t.imdbId);
   let ratingsFromCsv = 0;
 
   for (const t of remote) {
@@ -120,17 +124,6 @@ export async function syncWatchlist(
         },
       });
   }
-
-  const softRemoved = await db
-    .update(watchlistItems)
-    .set({ onList: false })
-    .where(
-      and(
-        eq(watchlistItems.onList, true),
-        notInArray(watchlistItems.imdbId, remoteIds),
-      ),
-    )
-    .returning({ imdbId: watchlistItems.imdbId });
 
   // GraphQL gap-fill: missing rating, poster, runtime, plot, and/or series counts
   let metaFromGraphql = 0;
@@ -222,7 +215,7 @@ export async function syncWatchlist(
   const stats = {
     fetched: remote.length,
     upserted: remote.length,
-    softRemoved: softRemoved.length,
+    softRemoved: 0,
     ratingsFromCsv,
     metaFromGraphql,
   };

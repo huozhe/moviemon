@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { SiteNav } from "@/components/SiteNav";
 import { PageHeader } from "@/components/PageHeader";
 import { RelativeTime } from "@/components/RelativeTime";
+import { AddTitleForm } from "@/components/AddTitleForm";
 import {
   getListStats,
   listPendingTitles,
@@ -65,7 +66,7 @@ export default async function SettingsPage() {
         <PageHeader
           eyebrow="System"
           title="Settings"
-          description="Services, sync health, and how to refresh your list."
+          description="MovieMon is the source of truth for your watchlist. Manage titles here; availability refreshes on a schedule."
         />
 
         {error ? (
@@ -217,28 +218,45 @@ export default async function SettingsPage() {
           )}
         </section>
 
+        <section className="mb-8 rounded-2xl bg-raised p-4 ring-1 ring-border">
+          <h2 className="font-display text-base font-semibold text-ink">
+            Add a title
+          </h2>
+          <p className="mt-1 mb-4 text-sm leading-relaxed text-muted">
+            Paste an IMDb id or title page URL. Metadata is loaded from IMDb
+            GraphQL; the list itself lives only in MovieMon.
+          </p>
+          <AddTitleForm />
+        </section>
+
         <section className="mb-6 rounded-2xl bg-raised p-4 ring-1 ring-border">
           <h2 className="font-display text-base font-semibold text-ink">
-            Watchlist source
+            Watchlist source of truth
           </h2>
           <p className="mt-2 text-sm leading-relaxed text-muted">
-            IMDb blocks automated page scrapes. Export your public watchlist as
-            CSV and set{" "}
+            <strong className="font-medium text-ink">This site + Neon</strong>{" "}
+            own the list. Use <strong className="font-medium text-ink">Remove</strong>{" "}
+            on any card, or add titles above. IMDb is only for bootstrap (one-time
+            CSV) and metadata lookups — daily import is off and re-import never
+            deletes titles you keep here.
+          </p>
+          <p className="mt-2 text-sm leading-relaxed text-muted">
+            Optional one-time bootstrap:{" "}
             <code className="rounded bg-void px-1.5 py-0.5 font-mono text-[11px] text-accent">
-              IMDB_WATCHLIST_CSV_URL
+              POST /api/sync
             </code>{" "}
-            to a stable raw URL, or POST the CSV once with{" "}
+            with{" "}
             <code className="rounded bg-void px-1.5 py-0.5 font-mono text-[11px] text-accent">
-              csvText
-            </code>
-            .
+              {"{"}&quot;kind&quot;:&quot;watchlist&quot;,&quot;csvText&quot;:&quot;…&quot;{"}"}
+            </code>{" "}
+            (Bearer secret). Additive only.
           </p>
         </section>
 
         <details className="rounded-2xl bg-raised ring-1 ring-border open:pb-1">
           <summary className="cursor-pointer list-none px-4 py-3 font-display text-base font-semibold text-ink marker:content-none [&::-webkit-details-marker]:hidden">
             <span className="flex items-center justify-between gap-2">
-              Manual sync (API)
+              Manual availability sync (API)
               <span className="text-xs font-normal text-faint">curl</span>
             </span>
           </summary>

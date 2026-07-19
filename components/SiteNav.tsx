@@ -30,7 +30,7 @@ export function SiteNav({
               MovieMon
             </span>
             <span className="hidden text-[11px] text-faint sm:block">
-              Watchlist · US streams
+              Your list · US streams
             </span>
           </span>
         </Link>

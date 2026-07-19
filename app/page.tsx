@@ -47,7 +47,7 @@ export default async function HomePage() {
         <PageHeader
           eyebrow="Ready to watch"
           title="Available now"
-          description="On your IMDb watchlist and streamable on Max, Netflix, Prime, or YouTube TV (US subscription / free / ads)."
+          description="On your MovieMon watchlist and streamable on Max, Netflix, Prime, or YouTube TV (US subscription / free / ads)."
           count={titles.length}
           countLabel="ready"
         />
@@ -62,7 +62,7 @@ export default async function HomePage() {
         ) : (
           <TitleBrowser
             titles={toBrowserTitles(titles)}
-            emptyMessage="Nothing available yet. Import your watchlist and run an availability sync — new titles show up here when they land on your services."
+            emptyMessage="Nothing available yet. Add titles in Settings (or bootstrap once from an IMDb CSV), then run an availability sync — they show up here when they land on your services."
             variant="available"
             enableProviderFilter
           />

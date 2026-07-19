@@ -10,6 +10,11 @@ export type ImdbRating = {
 };
 
 export type ImdbTitleMeta = {
+  /** Primary title text from GraphQL (null if title not found). */
+  name: string | null;
+  year: number | null;
+  /** Normalized: movie | tv | other */
+  titleType: string | null;
   rating: number | null;
   votes: number | null;
   posterUrl: string | null;
@@ -66,7 +71,7 @@ export async function fetchImdbRating(
 }
 
 /**
- * Rating + poster + runtime + plot + series counts in one request.
+ * Title identity + rating + poster + runtime + plot + series counts.
  * Poster URLs point at Amazon CDN; we store the URL only.
  */
 export async function fetchImdbTitleMeta(
@@ -74,6 +79,9 @@ export async function fetchImdbTitleMeta(
 ): Promise<ImdbTitleMeta> {
   const data = await imdbGraphql<{
     title?: {
+      titleText?: { text?: string | null } | null;
+      releaseYear?: { year?: number | null } | null;
+      titleType?: { id?: string | null; text?: string | null } | null;
       ratingsSummary?: {
         aggregateRating?: number | null;
         voteCount?: number | null;
@@ -99,6 +107,16 @@ export async function fetchImdbTitleMeta(
   }>(
     `query TitleMeta($id: ID!) {
       title(id: $id) {
+        titleText {
+          text
+        }
+        releaseYear {
+          year
+        }
+        titleType {
+          id
+          text
+        }
         ratingsSummary {
           aggregateRating
           voteCount
@@ -127,7 +145,15 @@ export async function fetchImdbTitleMeta(
     { id: imdbId },
   );
 
-  const summary = data.title?.ratingsSummary;
+  const t = data.title;
+  const name = t?.titleText?.text?.trim() || null;
+  const year =
+    typeof t?.releaseYear?.year === "number" ? t.releaseYear.year : null;
+  const titleType = mapGraphqlTitleType(
+    t?.titleType?.id ?? t?.titleType?.text ?? null,
+  );
+
+  const summary = t?.ratingsSummary;
   const rating =
     typeof summary?.aggregateRating === "number" &&
     !Number.isNaN(summary.aggregateRating)
@@ -136,7 +162,7 @@ export async function fetchImdbTitleMeta(
   const votes =
     typeof summary?.voteCount === "number" ? summary.voteCount : null;
 
-  let posterUrl = data.title?.primaryImage?.url?.trim() || null;
+  let posterUrl = t?.primaryImage?.url?.trim() || null;
   if (posterUrl && posterUrl.includes("media-amazon.com")) {
     posterUrl = posterUrl.replace(
       /\._V1_.*(?=\.(jpg|jpeg|png|webp))/i,
@@ -144,23 +170,26 @@ export async function fetchImdbTitleMeta(
     );
   }
 
-  const seconds = data.title?.runtime?.seconds;
+  const seconds = t?.runtime?.seconds;
   const runtimeMinutes =
     typeof seconds === "number" && seconds > 0
       ? Math.round(seconds / 60)
       : null;
 
-  const plotRaw = data.title?.plot?.plotText?.plainText?.trim() || null;
+  const plotRaw = t?.plot?.plotText?.plainText?.trim() || null;
   const plot = plotRaw && plotRaw.length > 0 ? plotRaw : null;
 
-  const seasons = data.title?.episodes?.seasons;
+  const seasons = t?.episodes?.seasons;
   const seasonCount =
     Array.isArray(seasons) && seasons.length > 0 ? seasons.length : null;
-  const epTotal = data.title?.episodes?.episodes?.total;
+  const epTotal = t?.episodes?.episodes?.total;
   const episodeCount =
     typeof epTotal === "number" && epTotal > 0 ? epTotal : null;
 
   return {
+    name,
+    year,
+    titleType,
     rating,
     votes,
     posterUrl,
@@ -169,4 +198,21 @@ export async function fetchImdbTitleMeta(
     seasonCount,
     episodeCount,
   };
+}
+
+function mapGraphqlTitleType(raw: string | null): string | null {
+  if (!raw) return null;
+  const s = raw.toLowerCase();
+  if (s.includes("movie") || s === "feature" || s === "video" || s === "short") {
+    return "movie";
+  }
+  if (
+    s.includes("series") ||
+    s.includes("tv") ||
+    s.includes("episode") ||
+    s.includes("mini")
+  ) {
+    return "tv";
+  }
+  return "other";
 }

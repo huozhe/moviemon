@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { ProviderBadges } from "./ProviderBadges";
 import { PlotExpand } from "./PlotExpand";
+import { RemoveTitleButton } from "./RemoveTitleButton";
 
 function isTvType(titleType: string | null | undefined) {
   const t = (titleType ?? "").toLowerCase();
@@ -66,6 +67,7 @@ export function TitleCard({
   providerIds,
   webUrls,
   variant = "available",
+  showRemove = true,
 }: {
   imdbId: string;
   name: string;
@@ -80,6 +82,7 @@ export function TitleCard({
   providerIds: string[];
   webUrls?: Record<string, string | null>;
   variant?: "available" | "unavailable";
+  showRemove?: boolean;
 }) {
   const primaryHref =
     providerIds.length > 0
@@ -189,7 +192,7 @@ export function TitleCard({
             {plot?.trim() ? <PlotExpand plot={plot} /> : null}
           </div>
 
-          <div className="sm:max-w-[50%] sm:pt-0.5 sm:text-right">
+          <div className="flex flex-col items-start gap-2 sm:max-w-[50%] sm:items-end sm:pt-0.5 sm:text-right">
             {variant === "unavailable" ? (
               <span className="inline-flex rounded-full bg-surface px-2.5 py-1 text-xs font-medium text-faint ring-1 ring-border">
                 Not on your services
@@ -197,6 +200,9 @@ export function TitleCard({
             ) : (
               <ProviderBadges providerIds={providerIds} webUrls={webUrls} />
             )}
+            {showRemove ? (
+              <RemoveTitleButton imdbId={imdbId} name={name} />
+            ) : null}
           </div>
         </div>
       </div>

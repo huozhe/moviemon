@@ -1,6 +1,8 @@
 # MovieMon
 
-Public Next.js site that shows which titles on a public IMDb watchlist are available on **Max**, **Netflix**, **Prime Video**, and **YouTube TV** (US).
+Personal Next.js site that tracks **your** watchlist and shows which titles are available on **Max**, **Netflix**, **Prime Video**, and **YouTube TV** (US).
+
+**Source of truth:** Neon (`watchlist_items` / this site). IMDb is used for a one-time CSV bootstrap and for title metadata — not as an ongoing mirror.
 
 Design: [`docs/plans/watchlist-streaming-availability-v1.md`](docs/plans/watchlist-streaming-availability-v1.md)
 
@@ -8,14 +10,15 @@ Design: [`docs/plans/watchlist-streaming-availability-v1.md`](docs/plans/watchli
 
 - Next.js (App Router) + TypeScript + Tailwind
 - Neon Postgres (Vercel Marketplace) + Drizzle ORM
-- Vercel Cron for daily watchlist / availability sync
+- Vercel Cron for daily **availability** refresh
 - Watchmode for streaming offers by IMDb ID
+- IMDb GraphQL for title meta (and optional CSV bootstrap)
 
 ## Local setup
 
 ```bash
 cp .env.example .env.local
-# fill DATABASE_URL, CRON_SECRET, IMDB_WATCHLIST_CSV_URL, WATCHMODE_API_KEY
+# fill DATABASE_URL, CRON_SECRET, WATCHMODE_API_KEY
 
 npm install
 npm run db:push          # or db:generate && db:migrate
@@ -23,16 +26,31 @@ npm run seed             # seed Netflix / Max / Prime / YouTube TV
 npm run dev
 ```
 
-### IMDb watchlist (CSV)
+### Bootstrap from IMDb (optional, once)
 
-IMDb blocks automated HTML fetches with AWS WAF (HTTP 202 challenge). Use a CSV export:
+If you already have titles in Neon, skip this.
 
-1. Open your watchlist on IMDb → **⋯** → **Export**
-2. Host the `.csv` somewhere fetchable (GitHub Gist **raw** URL works well)
-3. Set `IMDB_WATCHLIST_CSV_URL` on Vercel (and in `.env.local`)
+1. Open your IMDb watchlist → **⋯** → **Export**
+2. One-shot import (preferred):
 
-One-off without hosting: `POST /api/sync` with JSON  
-`{"kind":"watchlist","csvText":"<paste full CSV>"}` and the Bearer secret.
+```bash
+curl -X POST "$ORIGIN/api/sync" \
+  -H "Authorization: Bearer $CRON_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"kind":"watchlist","csvText":"<paste full CSV>"}'
+```
+
+Or set `IMDB_WATCHLIST_CSV_URL` and call `POST /api/sync` with `{"kind":"watchlist"}`.
+
+Import is **additive only** — it never removes titles from MovieMon. Day-to-day adds/removes are done in the UI (Settings → Add; **Remove** on cards).
+
+### Ongoing list management
+
+| Action | How |
+|--------|-----|
+| Add title | Settings → paste `tt…` or IMDb title URL |
+| Remove title | **Remove** on Available / Unavailable cards |
+| Refresh streams | Daily cron or `POST /api/sync` `{"kind":"availability"}` |
 
 ## Scripts
 
@@ -46,26 +64,30 @@ One-off without hosting: `POST /api/sync` with JSON
 
 ## Cron
 
-Configured in `vercel.json` (≈ 8:00 / 8:30 AM PT):
+Configured in `vercel.json`:
 
-- `GET /api/cron/sync-watchlist`
-- `GET /api/cron/sync-availability`
+- `GET /api/cron/sync-availability` — daily (~15:30 UTC)
 
-Both require `Authorization: Bearer $CRON_SECRET`.
+Requires `Authorization: Bearer $CRON_SECRET`. Watchlist cron is **disabled** (list is not re-imported).
 
-Manual: `POST /api/sync` with the same auth and body `{"kind":"both"}`.
+Manual: `POST /api/sync` with the same auth and body `{"kind":"availability"}`.
+
+Watchlist API (no auth; personal single-tenant):
+
+- `POST /api/watchlist` `{"imdbId":"tt…"}` — add
+- `DELETE /api/watchlist` `{"imdbId":"tt…"}` — soft-remove
 
 ## Deploy
 
 1. Connect this GitHub repo to Vercel.
 2. Marketplace → **Neon** (free) → inject `DATABASE_URL`.
-3. Set `IMDB_WATCHLIST_URL`, `WATCHMODE_API_KEY`, `CRON_SECRET`.
-4. Make the IMDb watchlist **public**; verify in incognito.
-5. Run migrations + `npm run seed` (or a one-off against prod `DATABASE_URL`).
-6. Hit cron routes once with the Bearer secret.
+3. Set `WATCHMODE_API_KEY`, `CRON_SECRET`.
+4. Run migrations + `npm run seed` (or a one-off against prod `DATABASE_URL`).
+5. Bootstrap once from CSV if the DB is empty; then manage the list in the UI.
+6. Hit availability cron once with the Bearer secret.
 
 ## Hard rules
 
-- Failed IMDb pull must **not** wipe `on_list`.
-- Soft-remove missing titles only after a successful full fetch.
+- MovieMon/Neon is the watchlist source of truth.
+- IMDb CSV import must **not** soft-remove titles missing from the export.
 - Available = enabled provider + monotype in `flatrate` / `free` / `ads`.
