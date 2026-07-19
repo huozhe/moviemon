@@ -17,6 +17,8 @@ export const titles = pgTable("titles", {
   titleType: text("title_type"), // movie | tv | other
   /** Runtime in minutes (movies; for series often episode length) */
   runtimeMinutes: integer("runtime_minutes"),
+  /** Short plot / overview (GraphQL gap-fill) */
+  plot: text("plot"),
   posterUrl: text("poster_url"),
   /** Cached Watchmode title id — skips /search on later availability passes */
   watchmodeId: integer("watchmode_id"),

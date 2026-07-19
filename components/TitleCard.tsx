@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { ProviderBadges } from "./ProviderBadges";
+import { PlotExpand } from "./PlotExpand";
 
 function typeLabel(titleType: string | null) {
   const t = (titleType ?? "").toLowerCase();
@@ -30,6 +31,7 @@ export function TitleCard({
   posterUrl,
   imdbRating,
   runtimeMinutes,
+  plot,
   providerIds,
   webUrls,
   variant = "available",
@@ -41,6 +43,7 @@ export function TitleCard({
   posterUrl?: string | null;
   imdbRating?: number | null;
   runtimeMinutes?: number | null;
+  plot?: string | null;
   providerIds: string[];
   webUrls?: Record<string, string | null>;
   variant?: "available" | "unavailable";
@@ -132,6 +135,8 @@ export function TitleCard({
                 IMDb {imdbId}
               </a>
             </p>
+
+            {plot?.trim() ? <PlotExpand plot={plot} /> : null}
           </div>
 
           <div className="sm:max-w-[50%] sm:pt-0.5 sm:text-right">

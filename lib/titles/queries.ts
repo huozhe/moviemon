@@ -27,6 +27,7 @@ export type TitleRow = {
   imdbRating: number | null;
   imdbVotes: number | null;
   runtimeMinutes: number | null;
+  plot: string | null;
   lastSeenAt: Date;
   providerIds: string[];
   webUrls: Record<string, string | null>;
@@ -43,6 +44,7 @@ export type BrowserTitle = {
   imdbRating: number | null;
   imdbVotes: number | null;
   runtimeMinutes: number | null;
+  plot: string | null;
   lastSeenAt: string | null;
   providerIds: string[];
   webUrls: Record<string, string | null>;
@@ -64,6 +66,7 @@ export async function listAvailableTitles(): Promise<TitleRow[]> {
       imdbRating: titles.imdbRating,
       imdbVotes: titles.imdbVotes,
       runtimeMinutes: titles.runtimeMinutes,
+      plot: titles.plot,
       lastSeenAt: watchlistItems.lastSeenAt,
       availabilityCheckedAt: watchlistItems.availabilityCheckedAt,
       providerId: offers.providerId,
@@ -114,6 +117,7 @@ export async function listUnavailableTitles(): Promise<TitleRow[]> {
       imdbRating: titles.imdbRating,
       imdbVotes: titles.imdbVotes,
       runtimeMinutes: titles.runtimeMinutes,
+      plot: titles.plot,
       lastSeenAt: watchlistItems.lastSeenAt,
       availabilityCheckedAt: watchlistItems.availabilityCheckedAt,
     })
@@ -152,6 +156,7 @@ export async function listPendingTitles(): Promise<TitleRow[]> {
       imdbRating: titles.imdbRating,
       imdbVotes: titles.imdbVotes,
       runtimeMinutes: titles.runtimeMinutes,
+      plot: titles.plot,
       lastSeenAt: watchlistItems.lastSeenAt,
       availabilityCheckedAt: watchlistItems.availabilityCheckedAt,
     })
@@ -236,6 +241,7 @@ export function toBrowserTitles(rows: TitleRow[]): BrowserTitle[] {
     imdbRating: t.imdbRating,
     imdbVotes: t.imdbVotes,
     runtimeMinutes: t.runtimeMinutes,
+    plot: t.plot,
     lastSeenAt:
       t.lastSeenAt instanceof Date
         ? t.lastSeenAt.toISOString()
@@ -257,6 +263,7 @@ function groupTitleRows(
     imdbRating: number | null;
     imdbVotes: number | null;
     runtimeMinutes: number | null;
+    plot: string | null;
     lastSeenAt: Date;
     availabilityCheckedAt?: Date | null;
     providerId: string;
@@ -276,6 +283,7 @@ function groupTitleRows(
         imdbRating: r.imdbRating,
         imdbVotes: r.imdbVotes,
         runtimeMinutes: r.runtimeMinutes,
+        plot: r.plot,
         lastSeenAt: r.lastSeenAt,
         availabilityCheckedAt: r.availabilityCheckedAt,
         providerIds: [],

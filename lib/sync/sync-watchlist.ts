@@ -132,7 +132,7 @@ export async function syncWatchlist(
     )
     .returning({ imdbId: watchlistItems.imdbId });
 
-  // GraphQL gap-fill: missing rating, poster, and/or runtime
+  // GraphQL gap-fill: missing rating, poster, runtime, and/or plot
   let metaFromGraphql = 0;
   const missing = await db
     .select({
@@ -140,6 +140,7 @@ export async function syncWatchlist(
       imdbRating: titles.imdbRating,
       posterUrl: titles.posterUrl,
       runtimeMinutes: titles.runtimeMinutes,
+      plot: titles.plot,
     })
     .from(titles)
     .innerJoin(watchlistItems, eq(watchlistItems.imdbId, titles.imdbId))
@@ -150,6 +151,7 @@ export async function syncWatchlist(
           isNull(titles.imdbRating),
           isNull(titles.posterUrl),
           isNull(titles.runtimeMinutes),
+          isNull(titles.plot),
         ),
       ),
     )
@@ -166,6 +168,7 @@ export async function syncWatchlist(
         ratingFetchedAt?: Date;
         posterUrl?: string;
         runtimeMinutes?: number;
+        plot?: string;
         updatedAt: Date;
       } = { updatedAt: new Date() };
 
@@ -179,6 +182,9 @@ export async function syncWatchlist(
       }
       if (row.runtimeMinutes == null && meta.runtimeMinutes != null) {
         patch.runtimeMinutes = meta.runtimeMinutes;
+      }
+      if (!row.plot && meta.plot) {
+        patch.plot = meta.plot;
       }
 
       if (Object.keys(patch).length > 1) {

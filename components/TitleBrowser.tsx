@@ -327,6 +327,7 @@ export function TitleBrowser({
                 posterUrl={t.posterUrl}
                 imdbRating={t.imdbRating}
                 runtimeMinutes={t.runtimeMinutes}
+                plot={t.plot}
                 providerIds={t.providerIds}
                 webUrls={t.webUrls}
                 variant={variant}

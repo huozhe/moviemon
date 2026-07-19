@@ -14,6 +14,7 @@ export type ImdbTitleMeta = {
   votes: number | null;
   posterUrl: string | null;
   runtimeMinutes: number | null;
+  plot: string | null;
 };
 
 const GQL_URL = "https://graphql.imdb.com/";
@@ -63,7 +64,7 @@ export async function fetchImdbRating(
 }
 
 /**
- * Rating + poster + runtime in one request.
+ * Rating + poster + runtime + plot in one request.
  * Poster URLs point at Amazon CDN; we store the URL only.
  */
 export async function fetchImdbTitleMeta(
@@ -81,6 +82,11 @@ export async function fetchImdbTitleMeta(
       runtime?: {
         seconds?: number | null;
       } | null;
+      plot?: {
+        plotText?: {
+          plainText?: string | null;
+        } | null;
+      } | null;
     } | null;
   }>(
     `query TitleMeta($id: ID!) {
@@ -94,6 +100,11 @@ export async function fetchImdbTitleMeta(
         }
         runtime {
           seconds
+        }
+        plot {
+          plotText {
+            plainText
+          }
         }
       }
     }`,
@@ -123,5 +134,8 @@ export async function fetchImdbTitleMeta(
       ? Math.round(seconds / 60)
       : null;
 
-  return { rating, votes, posterUrl, runtimeMinutes };
+  const plotRaw = data.title?.plot?.plotText?.plainText?.trim() || null;
+  const plot = plotRaw && plotRaw.length > 0 ? plotRaw : null;
+
+  return { rating, votes, posterUrl, runtimeMinutes, plot };
 }
