@@ -101,6 +101,18 @@ export default async function SettingsPage() {
           )}
         </section>
 
+        <section className="mb-8 rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-600">
+          <h2 className="mb-2 font-semibold text-zinc-900">Watchlist source</h2>
+          <p>
+            IMDb blocks server HTML scrapes (AWS WAF). Set{" "}
+            <code className="rounded bg-zinc-100 px-1">
+              IMDB_WATCHLIST_CSV_URL
+            </code>{" "}
+            to a hosted IMDb export CSV (Gist raw URL, etc.), or POST{" "}
+            <code className="rounded bg-zinc-100 px-1">csvText</code> below.
+          </p>
+        </section>
+
         <section className="rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-600">
           <h2 className="mb-2 font-semibold text-zinc-900">Manual sync</h2>
           <p className="mb-2">
@@ -116,7 +128,13 @@ export default async function SettingsPage() {
             {`curl -X POST "$ORIGIN/api/sync" \\
   -H "Authorization: Bearer $CRON_SECRET" \\
   -H "Content-Type: application/json" \\
-  -d '{"kind":"both"}'`}
+  -d '{"kind":"both"}'
+
+# one-off with local IMDb CSV export:
+# jq -n --rawfile c ~/Downloads/watchlist.csv '{kind:"watchlist",csvText:$c}' \\
+#   | curl -sS -X POST "$ORIGIN/api/sync" \\
+#       -H "Authorization: Bearer $CRON_SECRET" \\
+#       -H "Content-Type: application/json" -d @-`}
           </pre>
         </section>
       </main>

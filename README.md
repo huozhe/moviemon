@@ -15,13 +15,24 @@ Design: [`docs/plans/watchlist-streaming-availability-v1.md`](docs/plans/watchli
 
 ```bash
 cp .env.example .env.local
-# fill DATABASE_URL, CRON_SECRET, IMDB_WATCHLIST_URL, WATCHMODE_API_KEY
+# fill DATABASE_URL, CRON_SECRET, IMDB_WATCHLIST_CSV_URL, WATCHMODE_API_KEY
 
 npm install
 npm run db:push          # or db:generate && db:migrate
 npm run seed             # seed Netflix / Max / Prime / YouTube TV
 npm run dev
 ```
+
+### IMDb watchlist (CSV)
+
+IMDb blocks automated HTML fetches with AWS WAF (HTTP 202 challenge). Use a CSV export:
+
+1. Open your watchlist on IMDb → **⋯** → **Export**
+2. Host the `.csv` somewhere fetchable (GitHub Gist **raw** URL works well)
+3. Set `IMDB_WATCHLIST_CSV_URL` on Vercel (and in `.env.local`)
+
+One-off without hosting: `POST /api/sync` with JSON  
+`{"kind":"watchlist","csvText":"<paste full CSV>"}` and the Bearer secret.
 
 ## Scripts
 

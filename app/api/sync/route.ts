@@ -8,7 +8,10 @@ export const maxDuration = 60;
 
 /**
  * Manual sync (settings "Sync now").
- * Body: { "kind": "watchlist" | "availability" | "both" }
+ * Body: {
+ *   "kind": "watchlist" | "availability" | "both",
+ *   "csvText"?: string  // optional IMDb export CSV (bypasses URL when kind includes watchlist)
+ * }
  * Auth: Authorization: Bearer <CRON_SECRET or SYNC_SECRET>
  */
 export async function POST(req: Request) {
@@ -17,14 +20,18 @@ export async function POST(req: Request) {
   }
 
   let kind: "watchlist" | "availability" | "both" = "both";
+  let csvText: string | undefined;
   try {
-    const body = (await req.json()) as { kind?: string };
+    const body = (await req.json()) as { kind?: string; csvText?: string };
     if (
       body.kind === "watchlist" ||
       body.kind === "availability" ||
       body.kind === "both"
     ) {
       kind = body.kind;
+    }
+    if (typeof body.csvText === "string" && body.csvText.trim()) {
+      csvText = body.csvText;
     }
   } catch {
     // empty body → both
@@ -33,7 +40,7 @@ export async function POST(req: Request) {
   const results: Record<string, unknown> = {};
 
   if (kind === "watchlist" || kind === "both") {
-    results.watchlist = await syncWatchlist();
+    results.watchlist = await syncWatchlist(csvText);
   }
   if (kind === "availability" || kind === "both") {
     results.availability = await syncAvailability();

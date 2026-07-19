@@ -1,7 +1,11 @@
 import { and, eq, notInArray } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { titles, watchlistItems, syncRuns } from "@/lib/db/schema";
-import { fetchPublicWatchlist } from "@/lib/imdb/watchlist-client";
+import {
+  fetchWatchlist,
+  parseWatchlistCsv,
+  type WatchlistTitle,
+} from "@/lib/imdb/watchlist-client";
 
 export type SyncWatchlistResult = {
   status: "ok" | "error";
@@ -12,29 +16,22 @@ export type SyncWatchlistResult = {
 };
 
 /**
- * Pull public IMDb watchlist → upsert titles → soft-remove missing.
+ * Pull watchlist → upsert titles → soft-remove missing.
  * On any fetch/parse failure, leave on_list unchanged.
+ *
+ * @param csvText optional IMDb export CSV body (manual sync bypasses URL fetch)
  */
-export async function syncWatchlist(): Promise<SyncWatchlistResult> {
+export async function syncWatchlist(
+  csvText?: string,
+): Promise<SyncWatchlistResult> {
   const startedAt = new Date();
   const db = getDb();
-  const url = process.env.IMDB_WATCHLIST_URL;
 
-  if (!url) {
-    const error = "IMDB_WATCHLIST_URL is not set";
-    await db.insert(syncRuns).values({
-      kind: "watchlist",
-      status: "error",
-      startedAt,
-      finishedAt: new Date(),
-      error,
-    });
-    return { status: "error", error };
-  }
-
-  let remote;
+  let remote: WatchlistTitle[];
   try {
-    remote = await fetchPublicWatchlist(url);
+    remote = csvText?.trim()
+      ? parseWatchlistCsv(csvText)
+      : await fetchWatchlist();
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     await db.insert(syncRuns).values({
