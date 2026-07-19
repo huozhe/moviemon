@@ -32,8 +32,9 @@ next-env.d.ts
 .idea/
 .vscode/
 
-# local agent / session state
-.grok/
+# local agent / session state (keep STATE.md for handoff continuity)
+.grok/*
+!.grok/STATE.md
 
 # drizzle / local db
 *.db
