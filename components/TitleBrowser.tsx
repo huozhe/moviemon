@@ -14,12 +14,13 @@ const TYPE_FILTERS = [
   { id: "tv", label: "TV" },
 ] as const;
 
-export type SortKey = "title" | "year" | "rating";
+export type SortKey = "title" | "year" | "rating" | "runtime";
 export type SortDir = "asc" | "desc";
 
 const SORT_OPTIONS: Array<{ id: SortKey; label: string }> = [
   { id: "title", label: "Title" },
   { id: "year", label: "Year" },
+  { id: "runtime", label: "Runtime" },
   { id: "rating", label: "IMDb ★" },
 ];
 
@@ -27,6 +28,7 @@ const SORT_OPTIONS: Array<{ id: SortKey; label: string }> = [
 const DEFAULT_DIR: Record<SortKey, SortDir> = {
   title: "asc",
   year: "desc",
+  runtime: "desc",
   rating: "desc",
 };
 
@@ -62,6 +64,13 @@ function sortTitles(
       else if (ay == null) cmp = 1; // nulls last regardless of dir
       else if (by == null) cmp = -1;
       else cmp = ay - by;
+    } else if (sort === "runtime") {
+      const ar = a.runtimeMinutes;
+      const br = b.runtimeMinutes;
+      if (ar == null && br == null) cmp = 0;
+      else if (ar == null) cmp = 1;
+      else if (br == null) cmp = -1;
+      else cmp = ar - br;
     } else {
       // rating
       const ar = a.imdbRating;
@@ -77,11 +86,15 @@ function sortTitles(
       return cmp; // tie-break always A→Z
     }
 
-    // Keep nulls last for year/rating even when descending
+    // Keep nulls last for numeric fields even when descending
     if (sort !== "title") {
       if (sort === "year") {
         if (a.year == null && b.year != null) return 1;
         if (b.year == null && a.year != null) return -1;
+      }
+      if (sort === "runtime") {
+        if (a.runtimeMinutes == null && b.runtimeMinutes != null) return 1;
+        if (b.runtimeMinutes == null && a.runtimeMinutes != null) return -1;
       }
       if (sort === "rating") {
         if (a.imdbRating == null && b.imdbRating != null) return 1;
@@ -98,6 +111,9 @@ function sortTitles(
 function dirLabel(sort: SortKey, dir: SortDir): string {
   if (sort === "title") return dir === "asc" ? "A→Z" : "Z→A";
   if (sort === "year") return dir === "asc" ? "oldest first" : "newest first";
+  if (sort === "runtime") {
+    return dir === "asc" ? "shortest first" : "longest first";
+  }
   return dir === "asc" ? "lowest first" : "highest first";
 }
 
