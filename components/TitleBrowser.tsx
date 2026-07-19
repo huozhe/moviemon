@@ -231,15 +231,6 @@ export function TitleBrowser({
                 </button>
               );
             })}
-            <button
-              type="button"
-              onClick={() => setDir((d) => (d === "asc" ? "desc" : "asc"))}
-              className="rounded-lg bg-raised px-2.5 py-1 text-xs font-medium text-muted ring-1 ring-border hover:text-ink"
-              aria-label={`Sort direction ${dir}. Click to reverse.`}
-              title="Toggle ascending / descending"
-            >
-              {dir === "asc" ? "Asc" : "Desc"}
-            </button>
           </div>
 
           {enableProviderFilter ? (
