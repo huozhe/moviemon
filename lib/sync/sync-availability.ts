@@ -3,7 +3,7 @@ import { getDb } from "@/lib/db";
 import { offers, providers, syncRuns, watchlistItems } from "@/lib/db/schema";
 import { getUSOffers } from "@/lib/availability/watchmode";
 
-const BATCH_LIMIT = 40;
+const BATCH_LIMIT = 100;
 
 export type SyncAvailabilityResult = {
   status: "ok" | "error";
