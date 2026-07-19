@@ -38,3 +38,7 @@ next-env.d.ts
 # drizzle / local db
 *.db
 *.db-journal
+
+# local watchlist exports
+imdb_watchlist.csv
+*.csv
