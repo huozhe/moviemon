@@ -38,6 +38,7 @@ export type BrowserTitle = {
   name: string;
   year: number | null;
   titleType: string | null;
+  posterUrl: string | null;
   imdbRating: number | null;
   imdbVotes: number | null;
   lastSeenAt: string | null;
@@ -226,6 +227,7 @@ export function toBrowserTitles(rows: TitleRow[]): BrowserTitle[] {
     name: t.name,
     year: t.year,
     titleType: t.titleType,
+    posterUrl: t.posterUrl,
     imdbRating: t.imdbRating,
     imdbVotes: t.imdbVotes,
     lastSeenAt:

@@ -15,12 +15,20 @@ const TYPE_FILTERS = [
 ] as const;
 
 export type SortKey = "title" | "year" | "rating";
+export type SortDir = "asc" | "desc";
 
 const SORT_OPTIONS: Array<{ id: SortKey; label: string }> = [
   { id: "title", label: "Title" },
   { id: "year", label: "Year" },
   { id: "rating", label: "IMDb ★" },
 ];
+
+/** Default direction when picking a sort field */
+const DEFAULT_DIR: Record<SortKey, SortDir> = {
+  title: "asc",
+  year: "desc",
+  rating: "desc",
+};
 
 function matchesType(titleType: string | null, filter: string) {
   if (filter === "all") return true;
@@ -34,30 +42,63 @@ function matchesType(titleType: string | null, filter: string) {
   return true;
 }
 
-function sortTitles(list: BrowserTitle[], sort: SortKey): BrowserTitle[] {
+function sortTitles(
+  list: BrowserTitle[],
+  sort: SortKey,
+  dir: SortDir,
+): BrowserTitle[] {
+  const mult = dir === "asc" ? 1 : -1;
   const copy = [...list];
+
   copy.sort((a, b) => {
+    let cmp = 0;
+
     if (sort === "title") {
-      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+      cmp = a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    } else if (sort === "year") {
+      const ay = a.year;
+      const by = b.year;
+      if (ay == null && by == null) cmp = 0;
+      else if (ay == null) cmp = 1; // nulls last regardless of dir
+      else if (by == null) cmp = -1;
+      else cmp = ay - by;
+    } else {
+      // rating
+      const ar = a.imdbRating;
+      const br = b.imdbRating;
+      if (ar == null && br == null) cmp = 0;
+      else if (ar == null) cmp = 1; // nulls last
+      else if (br == null) cmp = -1;
+      else cmp = ar - br;
     }
-    if (sort === "year") {
-      const ay = a.year ?? -1;
-      const by = b.year ?? -1;
-      if (by !== ay) return by - ay; // newest first
-      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+
+    if (cmp === 0 && sort !== "title") {
+      cmp = a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+      return cmp; // tie-break always A→Z
     }
-    // rating — highest first; nulls last
-    const ar = a.imdbRating;
-    const br = b.imdbRating;
-    if (ar == null && br == null) {
-      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+
+    // Keep nulls last for year/rating even when descending
+    if (sort !== "title") {
+      if (sort === "year") {
+        if (a.year == null && b.year != null) return 1;
+        if (b.year == null && a.year != null) return -1;
+      }
+      if (sort === "rating") {
+        if (a.imdbRating == null && b.imdbRating != null) return 1;
+        if (b.imdbRating == null && a.imdbRating != null) return -1;
+      }
     }
-    if (ar == null) return 1;
-    if (br == null) return -1;
-    if (br !== ar) return br - ar;
-    return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+
+    return cmp * mult;
   });
+
   return copy;
+}
+
+function dirLabel(sort: SortKey, dir: SortDir): string {
+  if (sort === "title") return dir === "asc" ? "A→Z" : "Z→A";
+  if (sort === "year") return dir === "asc" ? "oldest first" : "newest first";
+  return dir === "asc" ? "lowest first" : "highest first";
 }
 
 export function TitleBrowser({
@@ -77,6 +118,7 @@ export function TitleBrowser({
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [providerFilter, setProviderFilter] = useState<string | null>(null);
   const [sort, setSort] = useState<SortKey>(defaultSort);
+  const [dir, setDir] = useState<SortDir>(DEFAULT_DIR[defaultSort]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -93,8 +135,17 @@ export function TitleBrowser({
         (t.imdbRating != null && String(t.imdbRating).includes(q))
       );
     });
-    return sortTitles(list, sort);
-  }, [titles, query, typeFilter, providerFilter, sort]);
+    return sortTitles(list, sort, dir);
+  }, [titles, query, typeFilter, providerFilter, sort, dir]);
+
+  function selectSort(key: SortKey) {
+    if (key === sort) {
+      setDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSort(key);
+      setDir(DEFAULT_DIR[key]);
+    }
+  }
 
   if (titles.length === 0) {
     return (
@@ -149,7 +200,7 @@ export function TitleBrowser({
           </div>
 
           <div
-            className="flex flex-wrap gap-1"
+            className="flex flex-wrap items-center gap-1"
             role="group"
             aria-label="Sort by"
           >
@@ -159,7 +210,12 @@ export function TitleBrowser({
                 <button
                   key={s.id}
                   type="button"
-                  onClick={() => setSort(s.id)}
+                  onClick={() => selectSort(s.id)}
+                  title={
+                    active
+                      ? `Click to reverse (${dirLabel(s.id, dir === "asc" ? "desc" : "asc")})`
+                      : `Sort by ${s.label}`
+                  }
                   className={
                     active
                       ? "rounded-lg bg-accent px-2.5 py-1 text-xs font-semibold text-void"
@@ -167,9 +223,23 @@ export function TitleBrowser({
                   }
                 >
                   {s.label}
+                  {active ? (
+                    <span className="ml-1 opacity-80" aria-hidden>
+                      {dir === "asc" ? "↑" : "↓"}
+                    </span>
+                  ) : null}
                 </button>
               );
             })}
+            <button
+              type="button"
+              onClick={() => setDir((d) => (d === "asc" ? "desc" : "asc"))}
+              className="rounded-lg bg-raised px-2.5 py-1 text-xs font-medium text-muted ring-1 ring-border hover:text-ink"
+              aria-label={`Sort direction ${dir}. Click to reverse.`}
+              title="Toggle ascending / descending"
+            >
+              {dir === "asc" ? "Asc" : "Desc"}
+            </button>
           </div>
 
           {enableProviderFilter ? (
@@ -216,8 +286,8 @@ export function TitleBrowser({
           Showing{" "}
           <span className="tabular-nums text-muted">{filtered.length}</span> of{" "}
           <span className="tabular-nums text-muted">{titles.length}</span>
-          {sort === "rating" ? " · highest rating first" : null}
-          {sort === "year" ? " · newest year first" : null}
+          {" · "}
+          {dirLabel(sort, dir)}
         </p>
       </div>
 
@@ -232,6 +302,7 @@ export function TitleBrowser({
               setTypeFilter("all");
               setProviderFilter(null);
               setSort(defaultSort);
+              setDir(DEFAULT_DIR[defaultSort]);
             }}
           >
             Clear filters
@@ -246,6 +317,7 @@ export function TitleBrowser({
                 name={t.name}
                 year={t.year}
                 titleType={t.titleType}
+                posterUrl={t.posterUrl}
                 imdbRating={t.imdbRating}
                 providerIds={t.providerIds}
                 webUrls={t.webUrls}

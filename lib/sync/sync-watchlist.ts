@@ -1,4 +1,4 @@
-import { and, eq, isNull, notInArray } from "drizzle-orm";
+import { and, eq, isNull, notInArray, or } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { titles, watchlistItems, syncRuns } from "@/lib/db/schema";
 import {
@@ -6,7 +6,7 @@ import {
   parseWatchlistCsv,
   type WatchlistTitle,
 } from "@/lib/imdb/watchlist-client";
-import { fetchImdbRating } from "@/lib/imdb/ratings";
+import { fetchImdbTitleMeta } from "@/lib/imdb/ratings";
 
 export type SyncWatchlistResult = {
   status: "ok" | "error";
@@ -14,7 +14,7 @@ export type SyncWatchlistResult = {
   upserted?: number;
   softRemoved?: number;
   ratingsFromCsv?: number;
-  ratingsFromGraphql?: number;
+  metaFromGraphql?: number;
   error?: string;
 };
 
@@ -23,9 +23,7 @@ const GRAPHQL_DELAY_MS = 100;
 
 /**
  * Pull watchlist → upsert titles (incl. CSV ratings) → GraphQL gap-fill
- * for missing ratings → soft-remove missing list items.
- *
- * @param csvText optional IMDb export CSV body (manual sync bypasses URL fetch)
+ * for missing ratings/posters → soft-remove missing list items.
  */
 export async function syncWatchlist(
   csvText?: string,
@@ -70,14 +68,6 @@ export async function syncWatchlist(
     const hasRating = typeof t.imdbRating === "number";
     if (hasRating) ratingsFromCsv += 1;
 
-    const ratingFields = hasRating
-      ? {
-          imdbRating: t.imdbRating!,
-          imdbVotes: t.imdbVotes ?? null,
-          ratingFetchedAt: now,
-        }
-      : {};
-
     await db
       .insert(titles)
       .values({
@@ -86,7 +76,13 @@ export async function syncWatchlist(
         year: t.year ?? null,
         titleType: t.type ?? null,
         updatedAt: now,
-        ...ratingFields,
+        ...(hasRating
+          ? {
+              imdbRating: t.imdbRating!,
+              imdbVotes: t.imdbVotes ?? null,
+              ratingFetchedAt: now,
+            }
+          : {}),
       })
       .onConflictDoUpdate({
         target: titles.imdbId,
@@ -122,7 +118,6 @@ export async function syncWatchlist(
       });
   }
 
-  // Soft-remove only after a successful full fetch
   const softRemoved = await db
     .update(watchlistItems)
     .set({ onList: false })
@@ -134,37 +129,55 @@ export async function syncWatchlist(
     )
     .returning({ imdbId: watchlistItems.imdbId });
 
-  // GraphQL gap-fill: on-list titles still missing a rating
-  let ratingsFromGraphql = 0;
+  // GraphQL gap-fill: missing rating and/or poster
+  let metaFromGraphql = 0;
   const missing = await db
-    .select({ imdbId: titles.imdbId })
+    .select({
+      imdbId: titles.imdbId,
+      imdbRating: titles.imdbRating,
+      posterUrl: titles.posterUrl,
+    })
     .from(titles)
     .innerJoin(watchlistItems, eq(watchlistItems.imdbId, titles.imdbId))
     .where(
-      and(eq(watchlistItems.onList, true), isNull(titles.imdbRating)),
+      and(
+        eq(watchlistItems.onList, true),
+        or(isNull(titles.imdbRating), isNull(titles.posterUrl)),
+      ),
     )
     .limit(GRAPHQL_GAP_FILL_LIMIT);
 
   for (let i = 0; i < missing.length; i++) {
-    const { imdbId } = missing[i];
-    if (i > 0) {
-      await sleep(GRAPHQL_DELAY_MS);
-    }
+    const row = missing[i];
+    if (i > 0) await sleep(GRAPHQL_DELAY_MS);
     try {
-      const r = await fetchImdbRating(imdbId);
-      if (!r) continue;
-      await db
-        .update(titles)
-        .set({
-          imdbRating: r.rating,
-          imdbVotes: r.votes,
-          ratingFetchedAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .where(eq(titles.imdbId, imdbId));
-      ratingsFromGraphql += 1;
+      const meta = await fetchImdbTitleMeta(row.imdbId);
+      const patch: {
+        imdbRating?: number;
+        imdbVotes?: number | null;
+        ratingFetchedAt?: Date;
+        posterUrl?: string;
+        updatedAt: Date;
+      } = { updatedAt: new Date() };
+
+      if (row.imdbRating == null && meta.rating != null) {
+        patch.imdbRating = meta.rating;
+        patch.imdbVotes = meta.votes;
+        patch.ratingFetchedAt = new Date();
+      }
+      if (!row.posterUrl && meta.posterUrl) {
+        patch.posterUrl = meta.posterUrl;
+      }
+
+      if (Object.keys(patch).length > 1) {
+        await db
+          .update(titles)
+          .set(patch)
+          .where(eq(titles.imdbId, row.imdbId));
+        metaFromGraphql += 1;
+      }
     } catch {
-      // skip individual failures; keep sync ok
+      // skip individual failures
     }
   }
 
@@ -173,7 +186,7 @@ export async function syncWatchlist(
     upserted: remote.length,
     softRemoved: softRemoved.length,
     ratingsFromCsv,
-    ratingsFromGraphql,
+    metaFromGraphql,
   };
 
   await db.insert(syncRuns).values({
