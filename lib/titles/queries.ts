@@ -26,6 +26,7 @@ export type TitleRow = {
   posterUrl: string | null;
   imdbRating: number | null;
   imdbVotes: number | null;
+  runtimeMinutes: number | null;
   lastSeenAt: Date;
   providerIds: string[];
   webUrls: Record<string, string | null>;
@@ -41,6 +42,7 @@ export type BrowserTitle = {
   posterUrl: string | null;
   imdbRating: number | null;
   imdbVotes: number | null;
+  runtimeMinutes: number | null;
   lastSeenAt: string | null;
   providerIds: string[];
   webUrls: Record<string, string | null>;
@@ -61,6 +63,7 @@ export async function listAvailableTitles(): Promise<TitleRow[]> {
       posterUrl: titles.posterUrl,
       imdbRating: titles.imdbRating,
       imdbVotes: titles.imdbVotes,
+      runtimeMinutes: titles.runtimeMinutes,
       lastSeenAt: watchlistItems.lastSeenAt,
       availabilityCheckedAt: watchlistItems.availabilityCheckedAt,
       providerId: offers.providerId,
@@ -110,6 +113,7 @@ export async function listUnavailableTitles(): Promise<TitleRow[]> {
       posterUrl: titles.posterUrl,
       imdbRating: titles.imdbRating,
       imdbVotes: titles.imdbVotes,
+      runtimeMinutes: titles.runtimeMinutes,
       lastSeenAt: watchlistItems.lastSeenAt,
       availabilityCheckedAt: watchlistItems.availabilityCheckedAt,
     })
@@ -147,6 +151,7 @@ export async function listPendingTitles(): Promise<TitleRow[]> {
       posterUrl: titles.posterUrl,
       imdbRating: titles.imdbRating,
       imdbVotes: titles.imdbVotes,
+      runtimeMinutes: titles.runtimeMinutes,
       lastSeenAt: watchlistItems.lastSeenAt,
       availabilityCheckedAt: watchlistItems.availabilityCheckedAt,
     })
@@ -230,6 +235,7 @@ export function toBrowserTitles(rows: TitleRow[]): BrowserTitle[] {
     posterUrl: t.posterUrl,
     imdbRating: t.imdbRating,
     imdbVotes: t.imdbVotes,
+    runtimeMinutes: t.runtimeMinutes,
     lastSeenAt:
       t.lastSeenAt instanceof Date
         ? t.lastSeenAt.toISOString()
@@ -250,6 +256,7 @@ function groupTitleRows(
     posterUrl: string | null;
     imdbRating: number | null;
     imdbVotes: number | null;
+    runtimeMinutes: number | null;
     lastSeenAt: Date;
     availabilityCheckedAt?: Date | null;
     providerId: string;
@@ -268,6 +275,7 @@ function groupTitleRows(
         posterUrl: r.posterUrl,
         imdbRating: r.imdbRating,
         imdbVotes: r.imdbVotes,
+        runtimeMinutes: r.runtimeMinutes,
         lastSeenAt: r.lastSeenAt,
         availabilityCheckedAt: r.availabilityCheckedAt,
         providerIds: [],

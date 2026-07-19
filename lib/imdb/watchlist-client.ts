@@ -6,6 +6,8 @@ export type WatchlistTitle = {
   /** IMDb aggregate rating from CSV export when present */
   imdbRating?: number;
   imdbVotes?: number;
+  /** Runtime in minutes from CSV when present */
+  runtimeMinutes?: number;
 };
 
 const IMDB_ID_RE = /tt\d{7,}/g;
@@ -135,6 +137,13 @@ export function parseWatchlistCsv(csv: string): WatchlistTitle[] {
       h === "votes" ||
       h === "vote count",
   );
+  const runtimeIdx = header.findIndex(
+    (h) =>
+      h === "runtime (mins)" ||
+      h === "runtime (min)" ||
+      h === "runtime" ||
+      h === "runtime minutes",
+  );
 
   if (constIdx === -1) {
     throw new Error(
@@ -175,6 +184,15 @@ export function parseWatchlistCsv(csv: string): WatchlistTitle[] {
       }
     }
 
+    let runtimeMinutes: number | undefined;
+    if (runtimeIdx >= 0) {
+      const raw = (cols[runtimeIdx] ?? "").trim().replace(/,/g, "");
+      if (raw) {
+        const n = Number(raw);
+        if (!Number.isNaN(n) && n > 0) runtimeMinutes = Math.round(n);
+      }
+    }
+
     titles.push({
       imdbId,
       title,
@@ -182,6 +200,7 @@ export function parseWatchlistCsv(csv: string): WatchlistTitle[] {
       type: mapCsvTitleType(typeRaw),
       imdbRating,
       imdbVotes,
+      runtimeMinutes,
     });
   }
 

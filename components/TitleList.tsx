@@ -30,6 +30,7 @@ export function TitleList({
             titleType={t.titleType}
             posterUrl={t.posterUrl}
             imdbRating={t.imdbRating}
+            runtimeMinutes={t.runtimeMinutes}
             providerIds={t.providerIds}
             webUrls={t.webUrls}
             variant={variant}

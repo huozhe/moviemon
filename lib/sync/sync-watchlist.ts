@@ -66,6 +66,7 @@ export async function syncWatchlist(
 
   for (const t of remote) {
     const hasRating = typeof t.imdbRating === "number";
+    const hasRuntime = typeof t.runtimeMinutes === "number";
     if (hasRating) ratingsFromCsv += 1;
 
     await db
@@ -83,6 +84,7 @@ export async function syncWatchlist(
               ratingFetchedAt: now,
             }
           : {}),
+        ...(hasRuntime ? { runtimeMinutes: t.runtimeMinutes! } : {}),
       })
       .onConflictDoUpdate({
         target: titles.imdbId,
@@ -98,6 +100,7 @@ export async function syncWatchlist(
                 ratingFetchedAt: now,
               }
             : {}),
+          ...(hasRuntime ? { runtimeMinutes: t.runtimeMinutes! } : {}),
         },
       });
 
@@ -129,20 +132,25 @@ export async function syncWatchlist(
     )
     .returning({ imdbId: watchlistItems.imdbId });
 
-  // GraphQL gap-fill: missing rating and/or poster
+  // GraphQL gap-fill: missing rating, poster, and/or runtime
   let metaFromGraphql = 0;
   const missing = await db
     .select({
       imdbId: titles.imdbId,
       imdbRating: titles.imdbRating,
       posterUrl: titles.posterUrl,
+      runtimeMinutes: titles.runtimeMinutes,
     })
     .from(titles)
     .innerJoin(watchlistItems, eq(watchlistItems.imdbId, titles.imdbId))
     .where(
       and(
         eq(watchlistItems.onList, true),
-        or(isNull(titles.imdbRating), isNull(titles.posterUrl)),
+        or(
+          isNull(titles.imdbRating),
+          isNull(titles.posterUrl),
+          isNull(titles.runtimeMinutes),
+        ),
       ),
     )
     .limit(GRAPHQL_GAP_FILL_LIMIT);
@@ -157,6 +165,7 @@ export async function syncWatchlist(
         imdbVotes?: number | null;
         ratingFetchedAt?: Date;
         posterUrl?: string;
+        runtimeMinutes?: number;
         updatedAt: Date;
       } = { updatedAt: new Date() };
 
@@ -167,6 +176,9 @@ export async function syncWatchlist(
       }
       if (!row.posterUrl && meta.posterUrl) {
         patch.posterUrl = meta.posterUrl;
+      }
+      if (row.runtimeMinutes == null && meta.runtimeMinutes != null) {
+        patch.runtimeMinutes = meta.runtimeMinutes;
       }
 
       if (Object.keys(patch).length > 1) {

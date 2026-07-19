@@ -1,7 +1,7 @@
 /**
  * IMDb metadata via public GraphQL (no API key).
- * - Ratings: prefer CSV on import; GraphQL gap-fills missing scores.
- * - Posters: store CDN URL in titles.poster_url (browser/CDN cache the bytes).
+ * Ratings/runtime prefer CSV on import; GraphQL gap-fills missing fields.
+ * Posters: store CDN URL in titles.poster_url (browser/CDN cache the bytes).
  */
 
 export type ImdbRating = {
@@ -13,6 +13,7 @@ export type ImdbTitleMeta = {
   rating: number | null;
   votes: number | null;
   posterUrl: string | null;
+  runtimeMinutes: number | null;
 };
 
 const GQL_URL = "https://graphql.imdb.com/";
@@ -62,8 +63,8 @@ export async function fetchImdbRating(
 }
 
 /**
- * Rating + primary poster URL in one request.
- * Poster URLs point at Amazon CDN (m.media-amazon.com); we store the URL only.
+ * Rating + poster + runtime in one request.
+ * Poster URLs point at Amazon CDN; we store the URL only.
  */
 export async function fetchImdbTitleMeta(
   imdbId: string,
@@ -77,6 +78,9 @@ export async function fetchImdbTitleMeta(
       primaryImage?: {
         url?: string | null;
       } | null;
+      runtime?: {
+        seconds?: number | null;
+      } | null;
     } | null;
   }>(
     `query TitleMeta($id: ID!) {
@@ -87,6 +91,9 @@ export async function fetchImdbTitleMeta(
         }
         primaryImage {
           url
+        }
+        runtime {
+          seconds
         }
       }
     }`,
@@ -103,7 +110,6 @@ export async function fetchImdbTitleMeta(
     typeof summary?.voteCount === "number" ? summary.voteCount : null;
 
   let posterUrl = data.title?.primaryImage?.url?.trim() || null;
-  // Prefer a modest width for list UI (Amazon CDN supports UX size params)
   if (posterUrl && posterUrl.includes("media-amazon.com")) {
     posterUrl = posterUrl.replace(
       /\._V1_.*(?=\.(jpg|jpeg|png|webp))/i,
@@ -111,5 +117,11 @@ export async function fetchImdbTitleMeta(
     );
   }
 
-  return { rating, votes, posterUrl };
+  const seconds = data.title?.runtime?.seconds;
+  const runtimeMinutes =
+    typeof seconds === "number" && seconds > 0
+      ? Math.round(seconds / 60)
+      : null;
+
+  return { rating, votes, posterUrl, runtimeMinutes };
 }

@@ -13,6 +13,15 @@ function formatRating(rating: number | null | undefined) {
   return rating.toFixed(1);
 }
 
+function formatRuntime(minutes: number | null | undefined) {
+  if (minutes == null || Number.isNaN(minutes) || minutes <= 0) return null;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h <= 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
+
 export function TitleCard({
   imdbId,
   name,
@@ -20,6 +29,7 @@ export function TitleCard({
   titleType,
   posterUrl,
   imdbRating,
+  runtimeMinutes,
   providerIds,
   webUrls,
   variant = "available",
@@ -30,6 +40,7 @@ export function TitleCard({
   titleType: string | null;
   posterUrl?: string | null;
   imdbRating?: number | null;
+  runtimeMinutes?: number | null;
   providerIds: string[];
   webUrls?: Record<string, string | null>;
   variant?: "available" | "unavailable";
@@ -39,6 +50,7 @@ export function TitleCard({
       ? (webUrls?.[providerIds[0]] ?? null)
       : null;
   const ratingText = formatRating(imdbRating ?? null);
+  const runtimeText = formatRuntime(runtimeMinutes ?? null);
 
   return (
     <article className="group rounded-2xl bg-raised/80 p-3 ring-1 ring-border transition hover:bg-raised hover:ring-border-strong sm:p-4">
@@ -72,6 +84,14 @@ export function TitleCard({
               {year != null ? (
                 <span className="font-mono text-[11px] tabular-nums text-faint">
                   {year}
+                </span>
+              ) : null}
+              {runtimeText ? (
+                <span
+                  className="font-mono text-[11px] tabular-nums text-faint"
+                  title="Runtime"
+                >
+                  {runtimeText}
                 </span>
               ) : null}
               {ratingText ? (
