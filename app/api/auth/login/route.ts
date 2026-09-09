@@ -5,6 +5,12 @@ import {
   SESSION_COOKIE,
   verifyPassword,
 } from "@/lib/auth/session";
+import {
+  clearLoginFailures,
+  clientIp,
+  loginRetryAfter,
+  recordLoginFailure,
+} from "@/lib/auth/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,6 +20,15 @@ export async function POST(req: Request) {
     return Response.json(
       { error: "Login is not configured (SITE_PASSWORD unset)" },
       { status: 400 },
+    );
+  }
+
+  const ip = clientIp(req);
+  const retryAfter = loginRetryAfter(ip);
+  if (retryAfter > 0) {
+    return Response.json(
+      { error: "Too many attempts. Try again later." },
+      { status: 429, headers: { "Retry-After": String(retryAfter) } },
     );
   }
 
@@ -31,8 +46,10 @@ export async function POST(req: Request) {
 
   const ok = await verifyPassword(password);
   if (!ok) {
+    recordLoginFailure(ip);
     return Response.json({ error: "Incorrect password" }, { status: 401 });
   }
+  clearLoginFailures(ip);
 
   let token: string;
   try {

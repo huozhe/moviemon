@@ -19,7 +19,7 @@ Design: [`docs/plans/watchlist-streaming-availability-v1.md`](docs/plans/watchli
 ```bash
 cp .env.example .env.local
 # fill DATABASE_URL, CRON_SECRET, WATCHMODE_API_KEY
-# optional login: SITE_PASSWORD + AUTH_SECRET
+# optional login: SITE_PASSWORD + AUTH_SECRET (both, or neither)
 
 npm install
 npm run db:push          # or db:generate && db:migrate
@@ -34,9 +34,11 @@ When `SITE_PASSWORD` is set, the site redirects unauthenticated visitors to `/lo
 | Env | Purpose |
 |-----|---------|
 | `SITE_PASSWORD` | Shared password (omit to leave the site open — fine for local) |
-| `AUTH_SECRET` | Signs the session JWT (falls back to `CRON_SECRET` if unset) |
+| `AUTH_SECRET` | Signs the session JWT — **required** when `SITE_PASSWORD` is set (`openssl rand -base64 32`) |
 
-Cron and `POST /api/sync` still use `Authorization: Bearer $CRON_SECRET` and skip the cookie.
+Cron and `POST /api/sync` still use `Authorization: Bearer $CRON_SECRET` and skip the cookie. `AUTH_SECRET` is deliberately separate: `CRON_SECRET` travels through curl commands and shell history, so it must not also sign login sessions.
+
+Failed logins are throttled per IP (10 per 15 minutes). The counter lives in process memory, so on serverless it is per instance — choose a strong `SITE_PASSWORD`. Rotating `AUTH_SECRET` invalidates every existing session; changing `SITE_PASSWORD` alone does not.
 
 ### Bootstrap exports (optional, once)
 
@@ -46,6 +48,8 @@ Put one-time exports under [`bootstrap/`](bootstrap/README.md) (gitignored):
 |------|----------------|
 | `bootstrap/notion_watchlist.md` | `npm run import:notion` (Want to Watch only) |
 | `bootstrap/imdb_watchlist.csv` | `POST /api/sync` with `csvText`, or host + `IMDB_WATCHLIST_CSV_URL` |
+
+IMDb serves AWS WAF challenges to server-side page fetches, so there is no watchlist scraper — export the CSV yourself. Title metadata comes from IMDb's public GraphQL endpoint.
 
 ```bash
 # Notion markdown export
@@ -97,7 +101,7 @@ Watchlist API (requires login cookie when `SITE_PASSWORD` is set):
 
 1. Connect this GitHub repo to Vercel.
 2. Marketplace → **Neon** (free) → inject `DATABASE_URL`.
-3. Set `WATCHMODE_API_KEY`, `CRON_SECRET`, `SITE_PASSWORD`, `AUTH_SECRET`.
+3. Set `WATCHMODE_API_KEY`, `CRON_SECRET`, `SITE_PASSWORD`, `AUTH_SECRET` (distinct values).
 4. Run migrations + `npm run seed` (or a one-off against prod `DATABASE_URL`).
 5. Bootstrap once from CSV if the DB is empty; then manage the list in the UI.
 6. Hit availability cron once with the Bearer secret.
@@ -108,3 +112,15 @@ Watchlist API (requires login cookie when `SITE_PASSWORD` is set):
 - MovieMon/Neon is the watchlist source of truth.
 - IMDb CSV import must **not** soft-remove titles missing from the export.
 - Available = enabled provider + monotype in `flatrate` / `free` / `ads`.
+
+## Security
+
+Single shared password, no user accounts — it keeps a personal list private, not much more. Report anything you find by opening an issue.
+
+- Set `SITE_PASSWORD` **and** `AUTH_SECRET` together, and keep `AUTH_SECRET` distinct from `CRON_SECRET`.
+- Never commit `.env.local` or anything under `bootstrap/` — both are gitignored, and the exports hold personal viewing history.
+- Keep `next` patched; the auth gate is `middleware.ts`, and middleware-bypass advisories defeat it outright.
+
+## License
+
+[MIT](LICENSE) © Zheng Liu

@@ -10,36 +10,27 @@ export type WatchlistTitle = {
   runtimeMinutes?: number;
 };
 
-const IMDB_ID_RE = /tt\d{7,}/g;
-
 /**
- * Load the watchlist from env-configured sources.
- * Prefers CSV (works server-side). HTML is attempted only as a fallback and
- * usually fails because IMDb serves AWS WAF challenges (HTTP 202) to bots.
+ * Load the watchlist from a hosted IMDb CSV export.
+ * IMDb serves AWS WAF challenges to server-side HTML fetches, so scraping the
+ * watchlist page is not supported — export the CSV and host it.
  */
 export async function fetchWatchlist(): Promise<WatchlistTitle[]> {
   const csvUrl = process.env.IMDB_WATCHLIST_CSV_URL?.trim();
-  if (csvUrl) {
-    return fetchWatchlistCsv(csvUrl);
+  if (!csvUrl) {
+    throw new Error(
+      "Set IMDB_WATCHLIST_CSV_URL, or POST /api/sync with csvText. " +
+        "IMDb blocks automated HTML fetches with AWS WAF.",
+    );
   }
-
-  const pageUrl = process.env.IMDB_WATCHLIST_URL?.trim();
-  if (pageUrl) {
-    return fetchPublicWatchlist(pageUrl);
-  }
-
-  throw new Error(
-    "Set IMDB_WATCHLIST_CSV_URL (recommended) or IMDB_WATCHLIST_URL. " +
-      "IMDb blocks automated HTML fetches with AWS WAF; use a CSV export URL.",
-  );
+  return fetchWatchlistCsv(csvUrl);
 }
 
 /** Fetch + parse an IMDb-exported CSV (or any CSV with Const/Title columns). */
 export async function fetchWatchlistCsv(url: string): Promise<WatchlistTitle[]> {
   const res = await fetch(url, {
     headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+      "User-Agent": "MovieMon/1.0 (+https://github.com/huozhe/moviemon)",
       Accept: "text/csv,text/plain,*/*",
     },
     cache: "no-store",
@@ -57,43 +48,6 @@ export async function fetchWatchlistCsv(url: string): Promise<WatchlistTitle[]> 
   }
 
   return parseWatchlistCsv(text);
-}
-
-/**
- * Fetch a public IMDb watchlist page and extract titles.
- * Hard rule for callers: on failure, do not wipe existing on_list rows.
- * Run on Node runtime (not Edge).
- */
-export async function fetchPublicWatchlist(
-  url: string,
-): Promise<WatchlistTitle[]> {
-  const res = await fetch(url, {
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-      "Accept-Language": "en-US,en;q=0.9",
-      Accept:
-        "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    },
-    cache: "no-store",
-    redirect: "follow",
-  });
-
-  const html = await res.text();
-
-  if (looksLikeWafChallenge(res, html)) {
-    throw new Error(
-      "IMDb blocked the watchlist HTML fetch with AWS WAF (HTTP 202 challenge). " +
-        "Server-side scrapes no longer work. Export your watchlist as CSV from IMDb " +
-        "(⋯ → Export), host the file (e.g. GitHub Gist raw URL), and set IMDB_WATCHLIST_CSV_URL.",
-    );
-  }
-
-  if (!res.ok) {
-    throw new Error(`IMDb watchlist fetch failed: HTTP ${res.status}`);
-  }
-
-  return parseWatchlistHtml(html);
 }
 
 function looksLikeWafChallenge(res: Response, body: string): boolean {
@@ -257,116 +211,4 @@ function mapCsvTitleType(raw: string): WatchlistTitle["type"] {
     return "tv";
   }
   return "other";
-}
-
-/** Exported for unit testing. */
-export function parseWatchlistHtml(html: string): WatchlistTitle[] {
-  if (looksLikeWafHtml(html)) {
-    throw new Error(
-      "IMDb returned an AWS WAF challenge page instead of the watchlist HTML.",
-    );
-  }
-
-  const fromEmbedded = parseEmbeddedWatchlist(html);
-  if (fromEmbedded.length > 0) {
-    return fromEmbedded;
-  }
-
-  const seen = new Set<string>();
-  const titles: WatchlistTitle[] = [];
-  for (const match of html.matchAll(IMDB_ID_RE)) {
-    const imdbId = match[0];
-    if (seen.has(imdbId)) continue;
-    seen.add(imdbId);
-    titles.push({ imdbId, title: imdbId, type: "other" });
-  }
-
-  if (titles.length === 0) {
-    throw new Error("IMDb watchlist parse produced zero titles");
-  }
-
-  return titles;
-}
-
-function looksLikeWafHtml(html: string): boolean {
-  return /awsWafCookieDomainList|gokuProps/i.test(html);
-}
-
-function parseEmbeddedWatchlist(html: string): WatchlistTitle[] {
-  const nextDataMatch = html.match(
-    /<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/,
-  );
-  if (!nextDataMatch?.[1]) return [];
-
-  try {
-    const data = JSON.parse(nextDataMatch[1]) as unknown;
-    const found: WatchlistTitle[] = [];
-    const seen = new Set<string>();
-    walk(data, seen, found);
-    return found;
-  } catch {
-    return [];
-  }
-}
-
-function walk(
-  node: unknown,
-  seen: Set<string>,
-  out: WatchlistTitle[],
-): void {
-  if (node == null) return;
-  if (Array.isArray(node)) {
-    for (const item of node) walk(item, seen, out);
-    return;
-  }
-  if (typeof node !== "object") return;
-
-  const obj = node as Record<string, unknown>;
-  const id =
-    (typeof obj.const === "string" && obj.const) ||
-    (typeof obj.id === "string" && obj.id) ||
-    (typeof obj.tconst === "string" && obj.tconst) ||
-    null;
-
-  if (id && /^tt\d{7,}$/.test(id) && !seen.has(id)) {
-    const titleText =
-      (typeof obj.titleText === "object" &&
-        obj.titleText &&
-        typeof (obj.titleText as { text?: string }).text === "string" &&
-        (obj.titleText as { text: string }).text) ||
-      (typeof obj.originalTitleText === "object" &&
-        obj.originalTitleText &&
-        typeof (obj.originalTitleText as { text?: string }).text === "string" &&
-        (obj.originalTitleText as { text: string }).text) ||
-      (typeof obj.title === "string" && obj.title) ||
-      (typeof obj.primaryTitle === "string" && obj.primaryTitle) ||
-      id;
-
-    let year: number | undefined;
-    if (typeof obj.releaseYear === "number") year = obj.releaseYear;
-    else if (
-      typeof obj.releaseYear === "object" &&
-      obj.releaseYear &&
-      typeof (obj.releaseYear as { year?: number }).year === "number"
-    ) {
-      year = (obj.releaseYear as { year: number }).year;
-    } else if (typeof obj.year === "number") {
-      year = obj.year;
-    }
-
-    const typeRaw =
-      (typeof obj.titleType === "object" &&
-        obj.titleType &&
-        typeof (obj.titleType as { id?: string }).id === "string" &&
-        (obj.titleType as { id: string }).id) ||
-      (typeof obj.titleType === "string" && obj.titleType) ||
-      "";
-
-    seen.add(id);
-    out.push({ imdbId: id, title: titleText, year, type: mapCsvTitleType(typeRaw) });
-  }
-
-  for (const value of Object.values(obj)) {
-    walk(value, seen, out);
-  }
 }

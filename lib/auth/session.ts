@@ -11,11 +11,12 @@ export function isAuthEnabled(): boolean {
 }
 
 function signingKey(): Uint8Array {
-  const secret =
-    process.env.AUTH_SECRET?.trim() || process.env.CRON_SECRET?.trim();
+  // No CRON_SECRET fallback: that secret is pasted into curl commands and
+  // shell history, and reusing it here would let a leak forge sessions.
+  const secret = process.env.AUTH_SECRET?.trim();
   if (!secret) {
     throw new Error(
-      "Set AUTH_SECRET (or CRON_SECRET) to sign login sessions when SITE_PASSWORD is set",
+      "Set AUTH_SECRET to sign login sessions when SITE_PASSWORD is set",
     );
   }
   return new TextEncoder().encode(secret);

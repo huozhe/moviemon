@@ -12,6 +12,19 @@ import {
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Sync errors are stored verbatim and shown here. Strip anything that could
+ * carry a credential (connection strings, apiKey params, bearer tokens)
+ * before it reaches the page.
+ */
+function redactError(raw: string): string {
+  return raw
+    .replace(/([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi, "$1[redacted]@")
+    .replace(/([?&](?:api_?key|token|secret)=)[^&\s]+/gi, "$1[redacted]")
+    .replace(/\bBearer\s+\S+/gi, "Bearer [redacted]")
+    .slice(0, 300);
+}
+
 export const metadata: Metadata = {
   title: "Settings",
 };
@@ -116,7 +129,7 @@ export default async function SettingsPage() {
                 {" "}
                 (
                 <span className="font-mono text-[11px]">
-                  {lastRateLimited.error.slice(0, 80)}
+                  {redactError(lastRateLimited.error).slice(0, 80)}
                   {lastRateLimited.error.length > 80 ? "…" : ""}
                 </span>
                 )
@@ -207,7 +220,7 @@ export default async function SettingsPage() {
                       <RelativeTime iso={iso} />
                       {r.error ? (
                         <span className="mt-1 block max-h-16 overflow-hidden text-danger/90">
-                          {r.error}
+                          {redactError(r.error)}
                         </span>
                       ) : null}
                     </p>
