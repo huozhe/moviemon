@@ -119,7 +119,7 @@ Single shared password, no user accounts — it keeps a personal list private, n
 
 - Set `SITE_PASSWORD` **and** `AUTH_SECRET` together, and keep `AUTH_SECRET` distinct from `CRON_SECRET`.
 - Never commit `.env.local` or anything under `bootstrap/` — both are gitignored, and the exports hold personal viewing history.
-- Keep `next` patched; the auth gate is `middleware.ts`, and middleware-bypass advisories defeat it outright.
+- Keep `next` patched; the auth gate is `proxy.ts`, and proxy/middleware-bypass advisories defeat it outright.
 
 ## License
 

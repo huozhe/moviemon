@@ -9,7 +9,7 @@ import {
  * Shared-password gate. When SITE_PASSWORD is unset, the site is open
  * (local dev convenience). Cron / secret sync routes skip the cookie check.
  */
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   if (!isAuthEnabled()) {
     return NextResponse.next();
   }
