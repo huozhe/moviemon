@@ -1,10 +1,13 @@
 # MovieMon v1 — personal watchlist + streaming availability
 
-**Status:** In progress (core app shipped; MovieMon is watchlist SoT; availability catch-up open)  
-**Date:** 2026-07-18  
-**Last updated:** 2026-07-19  
-**Audience:** Single-user personal tool (California, USA)  
-**Prod:** https://moviemon-psi.vercel.app · **Repo:** https://github.com/huozhe/moviemon
+**Status:** Shipped. Kept as the design record for v1.  
+**Date:** 2026-07-18 · **Last updated:** 2026-09-09  
+**Scope:** Single-tenant personal tool, US region, four providers  
+**Repo:** https://github.com/huozhe/moviemon
+
+> This is a design document, not a manual. It records why v1 is shaped the way
+> it is, including decisions later revised. For setup and usage see the
+> [README](../../README.md).
 
 ## Problem
 
@@ -22,7 +25,7 @@ I subscribe to **Max**, **Netflix**, **Prime Video**, and **YouTube TV**. I need
 
 ## Non-goals (v1)
 
-- User login / multi-user accounts
+- Multi-user accounts (a shared-password gate was added after v1 — see [Auth, revisited](#auth-revisited))
 - Ongoing daily re-import from IMDb
 - Native Android / iOS apps
 - Scraping Netflix/Max/Prime catalogs directly
@@ -40,9 +43,9 @@ I subscribe to **Max**, **Netflix**, **Prime Video**, and **YouTube TV**. I need
 | Jobs | Vercel Cron (**availability only**) |
 | Database | **Neon Postgres** via Vercel Marketplace (free plan) |
 | Watchlist SoT | **Neon `watchlist_items`** — add via UI / `POST /api/watchlist`; remove via UI / `DELETE /api/watchlist` |
-| IMDb role | Metadata (GraphQL) + **optional one-time CSV bootstrap** (`csvText` or `IMDB_WATCHLIST_CSV_URL`). Import is **additive**; never soft-removes. HTML scrape deprecated (AWS WAF). |
+| IMDb role | Metadata (GraphQL) + **optional one-time CSV bootstrap** (`csvText` or `IMDB_WATCHLIST_CSV_URL`). Import is **additive**; never soft-removes. HTML scrape removed (AWS WAF). |
 | Title metadata | Bootstrap CSV columns when present; **GraphQL** `graphql.imdb.com` for add-by-id + gap-fill (poster, plot, rating/runtime, seasons) |
-| Auth | **Shared password** (`SITE_PASSWORD` + `AUTH_SECRET` session cookie) when configured; site open if password unset. Cron/manual sync still use `CRON_SECRET` |
+| Auth | **Shared password** (`SITE_PASSWORD` + `AUTH_SECRET` session cookie) when configured; site open if password unset. Gate lives in `proxy.ts`. Cron/manual sync still use `CRON_SECRET`, which must differ from `AUTH_SECRET` |
 | Region | US |
 | Providers | Max, Netflix, Prime Video, YouTube TV |
 | Availability data | Watchmode (IMDb ID → sources) |
@@ -55,9 +58,16 @@ Core job is read + filter + link out. A website ships faster, works on phone and
 
 Standalone Vercel Postgres is discontinued. New projects provision Postgres from the [Vercel Marketplace](https://vercel.com/docs/postgres). Prefer `@neondatabase/serverless` + Drizzle — **not** legacy `@vercel/postgres`.
 
-### Why no login
+### Auth, revisited
 
-v1 is single-tenant and personal. Anyone with the URL can see the list. Optional later: Vercel Deployment Protection or hard-to-guess URL + `noindex`.
+v1 shipped with no login: single-tenant, personal, anyone with the URL could read the list.
+That was revised. The site now supports an optional shared password (`SITE_PASSWORD`)
+with a signed httpOnly session cookie (`AUTH_SECRET`). Leave `SITE_PASSWORD` unset and
+the original open behaviour returns, which is still the convenient default for local dev.
+
+`AUTH_SECRET` is intentionally separate from `CRON_SECRET`: the cron token appears in
+curl examples and shell history, so it must not also be able to mint sessions. Failed
+logins are throttled per IP in process memory — per instance on serverless, not global.
 
 ### IMDb constraint (updated)
 
@@ -73,7 +83,7 @@ IMDb has **no** personal “my watchlist” API for normal apps. Official IMDb A
 ## Architecture
 
 ```text
-Public web (no login)
+Web (open, or shared-password gated via proxy.ts)
         │
         ▼
 ┌───────────────────────────────────────────┐
@@ -174,7 +184,7 @@ A title is **available** when:
 IMDB_WATCHLIST_CSV_URL=https://gist.githubusercontent.com/.../raw/.../watchlist.csv
 
 # Optional one-off: POST /api/sync body { "kind": "watchlist", "csvText": "..." }
-# Deprecated (WAF): IMDB_WATCHLIST_URL=https://www.imdb.com/user/.../watchlist
+# IMDB_WATCHLIST_URL was removed — IMDb serves AWS WAF challenges to server fetches.
 ```
 
 Prerequisites:
@@ -268,11 +278,14 @@ Manual: `POST /api/sync` with same secret (or `SYNC_SECRET`), body `{ "kind": "a
 
 | Path | Access | Purpose |
 |------|--------|---------|
-| `/` | Public | Available on enabled services |
-| `/unavailable` | Public | Checked, not on those services (+ pending banner) |
-| `/settings` | Public UI | Add title, providers, stats, sync log |
-| `POST /api/watchlist` | Public | Add / re-add title by IMDb id |
-| `DELETE /api/watchlist` | Public | Soft-remove from list |
+| `/` | Cookie¹ | Available on enabled services |
+| `/unavailable` | Cookie¹ | Checked, not on those services (+ pending banner) |
+| `/settings` | Cookie¹ | Add title, providers, stats, sync log |
+| `/login` | Open | Shared-password form |
+| `POST /api/watchlist` | Cookie¹ | Add / re-add title by IMDb id |
+| `DELETE /api/watchlist` | Cookie¹ | Soft-remove from list |
+| `POST /api/auth/login` | Open, throttled | Exchange password for a session cookie |
+| `POST /api/auth/logout` | Open | Clear the session cookie |
 | `/api/cron/sync-availability` | `CRON_SECRET` | Offers refresh |
 | `/api/sync` | Secret | Manual sync / optional CSV bootstrap |
 | `/api/cron/sync-watchlist` | `CRON_SECRET` | Bootstrap endpoint still exists; **not** cron-scheduled |
@@ -281,41 +294,53 @@ Manual: `POST /api/sync` with same secret (or `SYNC_SECRET`), body `{ "kind": "a
 
 ```text
 moviemon/
+  proxy.ts                  # auth gate (was middleware.ts before Next 16)
   app/
-    page.tsx
+    page.tsx                # Available now
     unavailable/page.tsx
     settings/page.tsx
-    api/cron/sync-watchlist/route.ts
+    login/page.tsx
+    api/auth/login/route.ts
+    api/auth/logout/route.ts
     api/cron/sync-availability/route.ts
+    api/cron/sync-watchlist/route.ts   # bootstrap only; not scheduled
     api/sync/route.ts
     api/watchlist/route.ts
   components/
     TitleCard.tsx
-    TitleBrowser.tsx      # search, filter, sort
+    TitleBrowser.tsx        # search, filter, sort
+    TitleList.tsx
     AddTitleForm.tsx
     RemoveTitleButton.tsx
+    LoginForm.tsx
+    LogoutButton.tsx
     PlotExpand.tsx
     ProviderBadges.tsx
+    RelativeTime.tsx
     SiteNav.tsx
     PageHeader.tsx
   lib/
+    auth/session.ts         # password check, JWT sign/verify
+    auth/rate-limit.ts      # per-IP login throttle
     db/schema.ts
     db/index.ts
-    imdb/watchlist-client.ts
-    imdb/ratings.ts         # GraphQL meta
+    imdb/watchlist-client.ts  # CSV parse + fetch
+    imdb/ratings.ts           # GraphQL meta
     availability/watchmode.ts
     availability/providers.ts
-    sync/sync-watchlist.ts  # bootstrap import (additive)
+    sync/sync-watchlist.ts    # bootstrap import (additive)
     sync/sync-availability.ts
-    sync/auth.ts
-    watchlist/manage.ts     # add / remove
+    sync/auth.ts              # constant-time bearer check
+    watchlist/manage.ts       # add / remove
     titles/queries.ts
+  scripts/
+    seed-providers.ts
+    import-notion-watchlist.ts
+  bootstrap/                # gitignored export dumps (README tracked)
   docs/plans/
-  scripts/seed-providers.ts
   vercel.json
   drizzle.config.ts
   .env.example
-  .grok/STATE.md            # session handoff (tracked in git)
 ```
 
 ### Stack glue
@@ -340,9 +365,11 @@ CRON_SECRET=
 
 # Availability
 WATCHMODE_API_KEY=
-```
 
-No auth-related env vars in v1.
+# Shared-password login (added after v1; omit both to leave the site open)
+SITE_PASSWORD=
+AUTH_SECRET=
+```
 
 ## UI (shipped)
 
@@ -368,7 +395,7 @@ No auth-related env vars in v1.
 | Failure | Behavior |
 |---------|----------|
 | IMDb CSV missing / parse error | Sync errors; keep last good `on_list` |
-| IMDb HTML (if tried) | WAF 202; clear error; do not wipe list |
+| IMDb HTML | Scraper removed entirely — WAF made it unusable. CSV import only |
 | Watchmode quota (429) | Stop batch (`partial`); keep progress; **cooldown ~2h** on titles named in recent 429 errors so the same id is not hammered every run |
 | GraphQL meta fail | Skip title meta; do not fail whole watchlist sync |
 | Cron timeout | Small LIMIT + never-checked first |
@@ -396,7 +423,7 @@ Recorded from product review + API research. Implement only when explicitly pull
 | **Provider enable toggles in Settings UI** | DB has `providers.enabled`; seed only today. | Medium |
 | **Sort by recently seen on list** | `last_seen_at` already stored. | Low |
 | **Trakt (or similar) list source** | True API automation instead of CSV re-export. | Medium |
-| **Auth / deployment protection** | Site is fully public by design. | Future plan |
+| ~~**Auth / deployment protection**~~ | **Done.** Shared password + session cookie; Vercel Deployment Protection covers previews. | Shipped |
 | **PWA / push** | Out of v1. | Future plan |
 
 ## Deploy checklist
@@ -413,7 +440,7 @@ Recorded from product review + API research. Implement only when explicitly pull
 
 - [x] MovieMon/Neon is the watchlist source of truth (add/remove in UI; no daily IMDb re-import).
 - [x] CSV bootstrap (if used) is additive only — never soft-removes.
-- [x] Site is fully readable with no login.
+- [x] Site is readable with no login when `SITE_PASSWORD` is unset, and gated when it is set.
 - [ ] Available / Unavailable split matches spot-checks for Netflix, Max, and Prime.
 - [ ] YouTube TV validated or explicitly documented as partial.
 - [x] Failed bootstrap import never wipes `on_list`.
